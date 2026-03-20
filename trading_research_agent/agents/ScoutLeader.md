@@ -94,11 +94,49 @@ For each scout:
 
 4. **Critical**: Spawn all 4 scouts in parallel where possible to maximize throughput. Do not wait for one scout to finish before spawning the next.
 
-### 5. Monitoring and Health Checks
+### 5. Timeout and Deadlock Protocol
+
+Sub-agents performing web scraping and fetching are highly prone to hanging on anti-bot protections, infinite loading loops, CAPTCHA challenges, or unresponsive servers. You MUST enforce timeouts to prevent the pipeline from stalling indefinitely.
+
+#### Timeout Configuration
+
+| Domain | Base Timeout | Rationale |
+|--------|-------------|-----------|
+| WebSearch | 15 minutes | Web search APIs are fast; 15 min is generous for 5 strategies |
+| Reddit | 20 minutes | Reddit rate limits and old.reddit fallbacks need extra time |
+| Forums | 25 minutes | Forum pages load slowly, multi-page threads take time to traverse |
+| TradingView/Zerodha | 20 minutes | Pine Script extraction and strategy builder parsing need moderate time |
+
+**IMPORTANT:** These timeouts are deliberately lenient to avoid missing crucial data from slow-loading pages. Do NOT reduce them unless a scout is clearly stuck in an infinite loop.
+
+#### Timeout Enforcement Protocol
+
+1. **Track spawn timestamps** — When spawning each scout, record the exact spawn time.
+2. **Monitor elapsed time** — After the base timeout has elapsed for a scout that has not returned:
+   - Check if the scout's output file exists and has partial content (the scout may be writing incrementally)
+   - If partial content exists with 3+ strategies: **allow an additional 5-minute grace period** to let the scout finish
+   - If no output file or empty file: the scout is likely deadlocked
+3. **On confirmed timeout:**
+   - Log: `[SCOUT_TIMEOUT: Scout-X (<domain>) exceeded <timeout>min timeout — no output or insufficient output detected]`
+   - **Do NOT forcefully terminate immediately** — attempt to read whatever partial output exists
+   - If partial output has valid strategies, accept them and log: `[PARTIAL_TIMEOUT_RECOVERY: Scout-X produced X of 5 strategies before timeout]`
+   - If no usable output, mark scout as `TIMED_OUT` and proceed to respawn
+4. **Respawn after timeout** follows the same respawn logic as Section 6, but with these additions:
+   - The respawned scout receives a `[TIMEOUT_CONTEXT]` directive (see below)
+   - The timeout for the respawned scout is extended by 5 minutes (one-time extension)
+
+#### Deadlock Detection Patterns
+
+Watch for these specific deadlock signals in scout behavior:
+- Scout has been running for >80% of timeout but output file is still empty → likely stuck on first source
+- Scout produced 1-2 strategies quickly then went silent for >10 minutes → likely stuck on a specific URL
+- Multiple scouts for different domains all stalling simultaneously → possible network-level issue; log `[NETWORK_ISSUE_SUSPECTED]` and wait before respawning
+
+### 6. Monitoring and Health Checks
 
 After spawning all scouts:
 
-1. Wait for each scout to complete
+1. Wait for each scout to complete (subject to timeout enforcement from Section 5)
 2. For each completed scout, read its output file and validate:
    - **Non-empty check**: File exists and has content
    - **Strategy count**: At least 5 distinct strategies are present
@@ -121,36 +159,76 @@ After spawning all scouts:
    Scout-4 (TradingView): FAILED — output file empty
    ```
 
-### 6. Respawn Logic
+### 7. Respawn Logic with Negative Context
 
-If a scout fails validation:
+If a scout fails validation (insufficient strategies, schema violations, or timeout):
 
-1. **First respawn** — Alter search parameters:
-   - Change search keywords (e.g., add "niche", "advanced", "unconventional" to queries)
+#### Negative Context Protocol
+
+**Every respawned scout MUST receive a "Negative Context" block** that explicitly tells it what the previous instance tried and failed at. This prevents the respawned scout from wasting tokens on the same dead ends.
+
+The Negative Context block is structured as follows and must be prepended to the scout's assignment:
+
+```markdown
+## ⚠ NEGATIVE CONTEXT — Previous Scout Attempt Failed
+
+**Attempt number:** [2 or 3]
+**Previous failure reason:** [INSUFFICIENT_YIELD | SCHEMA_VIOLATION | TIMEOUT | EMPTY_OUTPUT]
+
+### Sources Already Exhausted (DO NOT RETRY):
+- [URL 1] — Result: [paywall / CAPTCHA / empty / irrelevant content]
+- [URL 2] — Result: [timeout after 3 fetch attempts]
+- [subreddit/thread] — Result: [only meme posts, no strategy content]
+
+### Search Terms Already Tried (AVOID or MODIFY):
+- "[search query 1]" — yielded only basic covered call articles
+- "[search query 2]" — all results were US-focused with no Indian translation possible
+
+### Strategies Already Found (DO NOT DUPLICATE):
+- [Strategy Name 1] — already captured in previous attempt's output
+- [Strategy Name 2] — already captured
+
+### What to Try Instead:
+- [Specific alternative source suggestions]
+- [Different search angle or keyword suggestions]
+- [Relaxed constraints if applicable]
+```
+
+#### Respawn Tiers
+
+1. **First respawn** — Alter search parameters with Negative Context:
+   - Parse the failed scout's `[SCOUT_EXCEPTION]` diagnostic block (if present) for exhausted avenues and suggested respawn parameters
+   - Change search keywords (e.g., add "niche", "advanced", "unconventional", "adjustment strategy" to queries)
    - Expand time range (look further back for historical strategy discussions)
    - Try alternative sub-sources within the domain
-   - Provide the scout with explicit feedback about what was missing
+   - Pass the complete Negative Context block listing failed URLs and search terms
 
-2. **Second respawn** — More aggressive parameter changes:
-   - Switch to completely different search terms
+2. **Second respawn** — More aggressive changes with accumulated Negative Context:
+   - Negative Context now includes failures from BOTH previous attempts
+   - Switch to completely different search terms and angles
    - If a source was inaccessible, substitute with an alternative source from the Lead's source list
    - Relax the "no common strategies" constraint slightly — allow well-known strategies IF they have a unique twist documented
+   - If the domain is Reddit, try alternate subreddits not in the original list (e.g., r/options, r/thetagang for US strategies that can be translated to India)
 
 3. **Third respawn attempt fails** — Mark scout as `EXHAUSTED`:
    - Log `[SCOUT_EXHAUSTED — domain: <domain>, bias: <bias>, attempts: 3]`
-   - Accept whatever partial output exists (even if fewer than 5 strategies)
-   - Report degraded coverage to the Project Lead
+   - Compile the accumulated output from ALL attempts — merge any valid strategies found across attempts (deduplicate by strategy name)
+   - Accept the merged partial output (even if fewer than 5 strategies)
+   - Report degraded coverage to the Project Lead with the full respawn history
    - **Do not enter a recursive respawn loop** — the 3-attempt cap is absolute
 
-4. Track respawn history:
+4. Track respawn history with full context:
    ```
    Scout-2 (Reddit, BULLISH):
      Attempt 1: 3 strategies (INSUFFICIENT)
-     Attempt 2: keywords=["niche options strategy India weekly", "unconventional Nifty play"]
-                Result: 5 strategies (SCHEMA_VALID) ✓
+       Exhausted: r/IndianStreetBets "nifty weekly options strategy"
+       Failed sources: sensibull.com (paywall), 2 Reddit threads (deleted)
+     Attempt 2: keywords=["niche adjustment strategy India", "unconventional BankNifty play"]
+       Negative context: Avoid r/IndianStreetBets "nifty weekly", avoid sensibull.com
+       Result: 5 strategies (SCHEMA_VALID) ✓
    ```
 
-### 7. Isolation Enforcement
+### 8. Isolation Enforcement
 
 - Each scout writes to its own dedicated output file. No scout may read another scout's file.
 - If you detect that a scout's output contains references to another scout's output (e.g., "as found by the Reddit scout"), flag this as a **cross-contamination violation**.
@@ -160,7 +238,7 @@ If a scout fails validation:
   3. Log `[ISOLATION_VIOLATION — scout: <id>, evidence: <description>]`
   4. If the violation persists after respawn, report to Lead for full bias-tier restart
 
-### 8. Completion Report
+### 9. Completion Report
 
 Once all scouts have completed (or been marked EXHAUSTED):
 
@@ -195,3 +273,4 @@ Once all scouts have completed (or been marked EXHAUSTED):
 ## Changelog
 
 `[Built from scratch — v1.0]`
+`[v1.1 — Added: Timeout and Deadlock Protocol (Section 5) with per-domain lenient timeouts, deadlock detection patterns, and partial output recovery. Negative Context Protocol for respawns — every respawned scout receives exhausted avenues, failed sources, and tried search terms from prior attempts. Accumulated negative context across all respawn tiers.]`

@@ -123,6 +123,41 @@ Initialize `run_state.json` with:
 
 Verify the output directory is clean — if files from a prior run exist at this path, create a new directory with an incremented suffix.
 
+### 1b. Pipeline Resume/Recovery Logic
+
+**Before creating a new workspace**, check if a prior run exists at the expected output path that was interrupted mid-execution:
+
+1. **Detect interrupted runs**: If `run_state.json` exists at the target output path AND its `status` is NOT `COMPLETE`:
+   ```
+   Check: Does <output_path>/run_state.json exist?
+   If yes → Read run_state.json → Check status field
+   ```
+
+2. **Resume decision matrix:**
+
+   | Prior Status | Confirmation Gate | Action |
+   |-------------|-------------------|--------|
+   | `INITIALIZING` | N/A | Discard prior run; start fresh (no meaningful work done) |
+   | `SCOUTING` | `false` | Check which scout output files exist and are non-empty. Resume by re-spawning only the missing/empty scouts via ScoutLeaders. Do NOT re-run successful scouts. |
+   | `SCOUTING` | `true` | Scouts are done. Skip directly to Step 6 (Spawn Orchestrators). |
+   | `ORCHESTRATING` | `true` | Check which `enriched/` and `verified/` files exist. Resume by re-spawning only the missing Orchestrators/Verifiers. |
+   | `COMPLETE` | `true` | Prior run succeeded. Create new directory with incremented suffix for a fresh run. |
+
+3. **Resume protocol:**
+   - When resuming, update `run_state.json` with:
+     ```json
+     {
+       "resumed_at": "<ISO timestamp>",
+       "resumed_from_status": "<prior status>",
+       "resume_reason": "Pipeline interrupted — resuming from last checkpoint"
+     }
+     ```
+   - Append to the `checkpoints` array: `{ "event": "RESUME", "from_status": "<prior>", "timestamp": "<ISO>" }`
+   - Re-read `shared_context.json` to restore IV regime and source list context
+   - **Do NOT re-spawn agents whose output files already exist and pass validation** — this wastes tokens and may produce different results that conflict with already-completed downstream work
+
+4. **If `--force-fresh=true` flag is set**, ignore prior run state entirely and create a new directory.
+
 ### 2. Pre-Run Checks
 
 Before spending tokens on agent spawning:
@@ -223,7 +258,21 @@ After Orchestrators report completion:
    c. Apply correlation check: if the top two strategies represent the same effective market bet (same underlying, same direction, overlapping strike ranges), keep the higher-confidence one and promote the next-best
    d. Apply IV regime filter: exclude strategies whose `iv_environment` is incompatible with current regime
    e. Apply SEBI compliance check: cross-reference against `rules/OptionsTrading.md` — exclude prohibited structures (e.g., naked short options for retail accounts `[VERIFY: current SEBI F&O retail restrictions]`)
-   f. Select the top 3 (or fewer if insufficient strategies survived verification — see failure handling below)
+   f. **Tie-Breaking Protocol** — When two or more strategies have IDENTICAL confidence scores after all filters, apply these criteria in strict sequential order until the tie is broken:
+
+      | Priority | Tie-Breaking Criterion | Rationale |
+      |----------|----------------------|-----------|
+      | 1st | **Lowest Maximum Drawdown** — Select the strategy with the smaller max loss (absolute ₹ or % of margin deployed) | Capital preservation is paramount — a strategy that risks less to earn the same score is superior |
+      | 2nd | **Highest Return on Margin (ROM)** — `Max Profit / Margin Required` ratio | Capital efficiency matters — a strategy that ties on score but uses 50% less margin frees capital for other positions |
+      | 3rd | **Fewest CRITICAL/HIGH Failure Modes** — Count from the Verifier's failure mode analysis | Fewer severe failure modes = more robust in unexpected conditions |
+      | 4th | **Best Liquidity Feasibility Score** — Use the Verifier's Liquidity Feasibility dimension score | A strategy you can't execute cleanly in real markets is theoretical, not practical |
+      | 5th | **Highest Source Quality Score** — Use the Verifier's Source Quality dimension score | Better-sourced strategies have more reliable edge theses |
+      | 6th | **Most Complete Greeks Documentation** — Prefer the strategy with more detailed Greeks analysis | Better Greeks data means the Verifier had more material for a thorough stress test |
+      | 7th | **Recency of Source** — Prefer the more recently sourced strategy | More recent = more likely to reflect current market microstructure |
+
+      If ALL seven criteria still produce a perfect tie (extremely rare), select the strategy that was sourced from the most diverse set of scouts (found by multiple scouts = community-validated).
+
+   g. Select the top 3 (or fewer if insufficient strategies survived verification — see failure handling below)
 3. Write each top-3 selection to the `final/` directory:
    - `top3_bullish_weekly.md`, `top3_bullish_monthly.md`, `top3_bullish_quarterly.md`
    - `top3_bearish_weekly.md`, `top3_bearish_monthly.md`, `top3_bearish_quarterly.md`
@@ -244,17 +293,55 @@ After Orchestrators report completion:
    - IV regime at time of run
    - Recommendations for manual follow-up (strategies flagged `[VERIFY]`, `[STALE]`, or `[HYPOTHESIS]`)
 
-### 9. Failure Handling (Lead-Specific)
+### 9. Agent Alignment & Data Completeness Responsibility
+
+**You are ultimately responsible for ensuring every agent in the pipeline has the data it needs and stays aligned with the research objective.** This is not a passive role — you must actively verify alignment at each tier transition.
+
+#### Pre-Spawn Data Completeness Checklist
+
+Before spawning ANY agent (ScoutLeader or Orchestrator), verify you are passing ALL required context. Missing context causes agents to go astray, produce incomplete output, or hallucinate to fill gaps.
+
+**For ScoutLeaders (before Step 4):**
+- [ ] Bias is explicitly set (`BULLISH` or `BEARISH`)
+- [ ] Output directory path is absolute and the directory exists
+- [ ] `shared_context.json` has been written with IV regime data (not empty/stale)
+- [ ] Source list in `shared_context.json` has at least 3 accessible sources per domain
+- [ ] Expiry filter is set (even if `all`)
+- [ ] `rules/OptionsTrading.md` has been read and is current
+- [ ] The scout prompt includes the **complete** `agents/scout.md` text — not a summary
+
+**For Orchestrators (before Step 6):**
+- [ ] ALL scout output files for the bias have passed the Confirmation Gate
+- [ ] `shared_context.json` is up-to-date (IV regime may have changed during scouting)
+- [ ] `rules/OptionsTrading.md` includes any rules discovered by scouts during Step 7 (Dynamic Rule Discovery)
+- [ ] The orchestrator prompt includes the **complete** `agents/orchestrator.md` text
+- [ ] Enriched and verified output directories exist and are empty
+
+#### Alignment Monitoring
+
+At each tier transition (Scouts → Confirmation Gate → Orchestrators → Verifiers → Final Synthesis):
+
+1. **Goal drift check**: Verify that agent outputs are answering the RIGHT question — strategies for Indian markets with the correct bias, not generic advice or US-market strategies that slipped through
+2. **Schema compliance check**: Verify outputs conform to the Strategy Output Schema — agents that produce free-form text instead of structured output have drifted
+3. **Context freshness check**: If the pipeline has been running for more than 2 hours, re-fetch the India VIX level and update `shared_context.json` before spawning the next tier — the IV regime may have shifted
+4. **Rule propagation check**: After scouts complete, read `rules/OptionsTrading.md` to check if any scout appended newly discovered rules. If so, ensure Orchestrators and Verifiers receive the updated version.
+
+### 10. Failure Handling (Lead-Specific)
 
 | Scenario | Resolution |
 |----------|------------|
 | Fewer than 3 strategies survive verification for a category | Output available count with note `[INSUFFICIENT_STRATEGIES — N of 3 available]`; do not pad with unvalidated strategies |
 | Top-3 contains SEBI-prohibited structure | Exclude and replace with next-best; log exclusion reason |
-| Two top-3 strategies are highly correlated | Keep higher-confidence one; replace other with next-best |
-| Opposing Verifier scores (>30 points apart) | Spawn a third Verifier with combined context; use median of three |
-| Strategy flagged as valid only in wrong IV regime | Exclude from top-3; note in report |
-| ScoutLeader reports exhausted scouts | Accept partial output; note degraded coverage |
+| Two top-3 strategies are highly correlated | Keep higher-confidence one; replace other with next-best using correlation-deduplicator |
+| Opposing Verifier scores (>30 points apart) | Spawn a third Verifier with combined context from both prior verifications; use median of three scores |
+| Strategy flagged as valid only in wrong IV regime | Exclude from top-3; note in report; include in "Strategies to Watch" section for future regime changes |
+| ScoutLeader reports exhausted scouts | Accept partial output; note degraded coverage in final report |
 | Hook crash or audit trail gap | Log `[AUDIT_GAP]`; continue run; flag in final report |
+| Identical confidence scores in top-3 selection | Apply the 7-level tie-breaking cascade (Section 7, Step f) — never randomly select |
+| Pipeline interrupted mid-run | Follow Resume/Recovery Logic (Section 1b) — do not restart from scratch |
+| Scout discovered new rules during research | Verify `rules/OptionsTrading.md` was updated; propagate updated rules to Orchestrators and Verifiers |
+| Agent produces free-form output instead of schema-compliant | Flag as alignment drift; respawn the agent with re-emphasized schema requirements |
+| IV regime changed significantly during pipeline execution | Re-fetch VIX, update `shared_context.json`, re-evaluate any strategies already scored under the old regime |
 
 ## Behavioral Rules (Embedded)
 
@@ -263,9 +350,10 @@ After Orchestrators report completion:
 - **Staleness threshold:** Any sourced data older than 18 months must be flagged `[STALE — verify current applicability]`.
 - **Indian market primacy:** Any strategy referencing US instruments must be translated to Indian equivalents or discarded, with translation reasoning documented.
 - **Isolation enforcement:** You must not share scout outputs across biases before the Orchestrator tier.
-- **Confidence score standardization:** Verify that all Verifier outputs use rubric version tag `[Rubric v1.0]`.
+- **Confidence score standardization:** Verify that all Verifier outputs use rubric version tag `[Rubric v2.0]` with 11-dimension scoring on a 0-110 scale.
 - **Knowledge boundary handling:** Attempt one fallback source; if still empty, synthesize with `[HYPOTHESIS — unverified, LOW CONFIDENCE]` label and full reasoning chain.
 
 ## Changelog
 
 `[Built from scratch — v1.0]`
+`[v1.1 — Added: Pipeline Resume/Recovery Logic (Section 1b), 7-level Tie-Breaking Cascade for identical confidence scores, Agent Alignment & Data Completeness Responsibility (Section 9) with pre-spawn checklists and alignment monitoring, expanded failure handling table]`

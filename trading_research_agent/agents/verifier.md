@@ -52,20 +52,81 @@ Read all inputs before beginning verification.
 
 For EACH strategy in the enriched file, perform the following analysis steps in order. Document your reasoning verbosely — write as a senior quant analyst would document their evaluation, not as a summary.
 
-#### Step 1: Failure Mode Analysis
+#### Step 1: Greeks Mathematical Stress Test
 
-Identify and document every plausible failure mode for this strategy:
+**Before analyzing qualitative failure modes, conduct a rigorous quantitative stress test using the strategy's Greeks exposure.** This step is MANDATORY and provides the mathematical foundation for all subsequent analysis.
+
+##### 1a. Delta Stress Test — Directional Risk Under Large Moves
+
+Evaluate what happens to the position's P&L and net delta under extreme underlying moves:
+
+| Scenario | Underlying Move | Analysis Required |
+|----------|----------------|-------------------|
+| **1-sigma move** | ±1 standard deviation of daily returns (~1.0-1.5% for Nifty) | What is the approximate P&L? Does the position remain within acceptable loss bounds? |
+| **2-sigma move** | ±2 standard deviations (~2.0-3.0% for Nifty) | How much has position delta shifted from entry? Is the position now dangerously directional? |
+| **3-sigma move (tail risk)** | ±3 standard deviations (~3.0-4.5% for Nifty, or a gap event) | Does max loss exceed stated risk? Could this trigger margin calls? |
+| **Gap scenario** | 5%+ overnight gap (e.g., global event, unexpected RBI action) | Is the position still hedged? Do any short legs blow through strikes? |
+
+For each scenario, document:
+- Approximate P&L impact (reasoning-based, not fabricated)
+- New net delta after the move
+- Whether adjustment rules can be executed in time (e.g., can you adjust at 3:25 PM when markets close at 3:30 PM?)
+
+##### 1b. Gamma Risk Assessment — Convexity Near Expiry
+
+| DTE | Gamma Risk Level | Analysis Required |
+|-----|------------------|-------------------|
+| > 5 DTE | Low-Moderate | Gamma is manageable; delta changes are gradual |
+| 3-5 DTE | Moderate-High | For ATM positions: how fast does delta change with a 50-point Nifty move? |
+| 1-2 DTE | HIGH-CRITICAL | **"Pin risk" and "gamma explosion" zone.** For any strategy held to 1 DTE: how violent are delta swings? Can the position be managed, or is it a binary lottery? |
+| 0 DTE (expiry day) | EXTREME | Position is essentially a binary bet. Is the strategy DESIGNED for 0 DTE, or is holding to expiry a risk the trader hasn't considered? |
+
+Document the **Gamma-Theta tradeoff**: Does the positive theta (time decay income) compensate for the gamma risk? Calculate the approximate ratio: `Daily Theta / |Gamma × Expected Daily Move²|`. If this ratio is < 1, the strategy is gamma-negative in expected value terms.
+
+##### 1c. Vega Sensitivity — Volatility Regime Dependency
+
+| IV Change | Analysis Required |
+|-----------|-------------------|
+| IV increases 3 vol points | What is the P&L impact per lot? (Approximate: Vega × 3) |
+| IV decreases 3 vol points | What is the P&L impact per lot? |
+| IV crush after event | For strategies held through earnings/RBI policy: what happens when IV drops 5-10 vol points instantly? |
+| VIX spike to >20 (from current level) | For short-vega strategies: is the position survivable? |
+
+**Key question:** Is the strategy's edge DEPENDENT on a specific IV direction, or is it IV-agnostic? If dependent, how sensitive is the P&L to getting the IV direction wrong?
+
+##### 1d. Rho and Interest Rate Sensitivity (for Monthly/Quarterly only)
+
+For strategies with DTE > 30 days:
+- What is the impact of a 25 bps RBI rate change on position value?
+- For deep ITM options: is the cost of carry factored into the strategy's breakeven?
+
+**Document the stress test results in a structured format:**
+```markdown
+#### Greeks Stress Test Results
+| Test | Scenario | P&L Impact | Severity | Survivable? |
+|------|----------|------------|----------|-------------|
+| Delta 2σ up | Nifty +3% | -₹X per lot | HIGH | Yes, with adjustment at [level] |
+| Delta 2σ down | Nifty -3% | +₹X per lot | LOW | Yes (favorable) |
+| Gamma @ 1 DTE | ATM position, 50pt move | Delta shifts from +0.2 to +0.7 | CRITICAL | Only if actively managed |
+| Vega +3pts | IV spike | -₹X per lot | MEDIUM | Yes, within max loss bounds |
+| Vega -5pts | Post-event IV crush | +₹X per lot | LOW | Yes (favorable for short-vega) |
+```
+
+#### Step 1e: Qualitative Failure Mode Analysis
+
+**In addition to the quantitative Greeks stress test above**, identify and document every plausible qualitative failure mode:
 
 | Failure Mode Category | Questions to Answer |
 |-----------------------|---------------------|
 | **Slippage & Execution** | What is the realistic bid-ask spread for the target strikes? Are weekly OTM options liquid enough? What slippage would a market order experience during volatile sessions? |
 | **Deep OTM Liquidity** | If any leg targets deep OTM strikes, what is the typical OI and volume? Can the position be exited cleanly at the intended exit point? |
-| **Gap Risk** | What happens if the underlying gaps 2-3% against the position overnight? On a Monday open after weekend news? During pre-market on event days? |
-| **IV Crush / Expansion** | Does the strategy depend on a specific IV behavior (crush after earnings, expansion before events)? What if IV moves in the opposite direction? |
-| **Theta Decay Assumptions** | Does the strategy's P&L depend on theta decay that may not materialize if the underlying moves significantly? |
+| **Gap Risk** | What happens if the underlying gaps 2-3% against the position overnight? On a Monday open after weekend news? During pre-market on event days? (Cross-reference with Delta stress test results above) |
+| **IV Crush / Expansion** | Does the strategy depend on a specific IV behavior (crush after earnings, expansion before events)? What if IV moves in the opposite direction? (Cross-reference with Vega sensitivity analysis above) |
+| **Theta Decay Assumptions** | Does the strategy's P&L depend on theta decay that may not materialize if the underlying moves significantly? (Cross-reference with Gamma-Theta tradeoff above) |
 | **Assignment Risk** | For short ITM options near expiry, what is the physical delivery risk on stock options? `[VERIFY: NSE physical settlement rules for stock options]` |
-| **Margin Spike** | Could peak margin requirements increase during volatile sessions, causing forced liquidation? |
+| **Margin Spike** | Could peak margin requirements increase during volatile sessions, causing forced liquidation? What is the margin-to-max-loss ratio? |
 | **Correlation Breakdown** | If the strategy hedges one leg with another, what happens if the correlation between legs breaks down? |
+| **Transaction Cost Erosion** | Do the all-in costs (brokerage + STT + charges) erode more than 30% of the theoretical edge? If so, flag as `[COST_EROSION_RISK]` |
 
 For each identified failure mode, assign a severity: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`.
 
@@ -138,11 +199,13 @@ If no backtest data exists (`[NO BACKTEST DATA AVAILABLE — synthesis only]`):
   5. Label clearly: `[SYNTHESIZED BACKTEST LOGIC — not actual results, LOW CONFIDENCE]`
 - Never present synthesized estimates as real backtest data
 
-### 3. Confidence Scoring Rubric — `[Rubric v1.0]`
+### 3. Confidence Scoring Rubric — `[Rubric v2.0]`
 
-**CRITICAL: All Verifiers must use this IDENTICAL rubric. Every confidence score must carry the tag `[Rubric v1.0]`.**
+**CRITICAL: All Verifiers must use this IDENTICAL rubric. Every confidence score must carry the tag `[Rubric v2.0]`.**
 
-Score each strategy on a 0-100 scale across 10 dimensions. Each dimension is scored 0-10.
+Score each strategy on a 0-110 scale across **11 dimensions**. Each dimension is scored 0-10.
+
+**v2.0 changes from v1.0:** Dimension 8 (Regulatory Compliance) has been split into two separate dimensions — **Regulatory Compliance** (Dim 8) and **Capital Efficiency** (Dim 9). This ensures that a perfectly legal but capital-inefficient strategy is penalized in scoring rather than dropped entirely. Additionally, **Greeks Robustness** has been added as Dimension 11, requiring the Greeks Stress Test results from Step 1 to be scored.
 
 | # | Dimension | Weight | 0 (Worst) | 5 (Average) | 10 (Best) |
 |---|-----------|--------|-----------|-------------|-----------|
@@ -153,28 +216,47 @@ Score each strategy on a 0-100 scale across 10 dimensions. Each dimension is sco
 | 5 | **Liquidity Feasibility** | 1x | Targets deep OTM strikes with zero OI | Targets liquid strikes but during off-hours | Targets high-OI ATM/near-ATM strikes during market hours |
 | 6 | **Historical Evidence** | 1x | No evidence; pure hypothesis | Cross-market evidence or community anecdotes | Empirical backtest on Indian instruments with cited source |
 | 7 | **IV Regime Alignment** | 1x | Strategy requires IV regime opposite to current | Strategy works in current regime but not optimal | Strategy is optimally suited for current IV regime |
-| 8 | **Regulatory Compliance** | 1x | Potentially prohibited or margin-infeasible | Compliant but high margin requirements | Fully compliant, margin-efficient, STT-optimized |
-| 9 | **Failure Mode Resilience** | 1x | Multiple CRITICAL failure modes with no mitigation | Some failure modes but with defined adjustments | All identified failure modes have documented mitigations |
-| 10 | **Source Quality** | 1x | Single anonymous forum post, no verification | Multiple community sources with some detail | Published research, verified backtest, or institutional source |
+| 8 | **Regulatory Compliance** | 1x | Potentially prohibited under SEBI rules; non-compliant structure | Compliant but with `[VERIFY]` tags on key rules; some uncertainty | Fully compliant with cited SEBI/NSE references; no compliance flags |
+| 9 | **Capital Efficiency (Return on Margin)** | 1x | Margin requirement >5x max profit; extreme capital lockup | ROM ratio 0.5-1.0x; margin is proportionate but not efficient | ROM ratio >2x; lean margin footprint with strong profit potential |
+| 10 | **Failure Mode Resilience** | 1x | Multiple CRITICAL failure modes with no mitigation | Some failure modes but with defined adjustments | All identified failure modes have documented mitigations |
+| 11 | **Greeks Robustness** | 1x | No Greeks analysis provided; or multiple CRITICAL Greeks stress test failures with no mitigation | Greeks documented; 2σ move survivable but with significant P&L impact; Gamma risk acknowledged | Comprehensive Greeks analysis; strategy survives 2σ move within max loss bounds; Gamma-Theta tradeoff favorable; Vega exposure aligned with IV regime |
+
+**Scoring Dimension 8 vs 9 — Key Distinction:**
+- **Dim 8 (Regulatory Compliance)** asks: "Is this strategy LEGAL and permissible under current SEBI/NSE rules for retail participants?"
+- **Dim 9 (Capital Efficiency)** asks: "Even if legal, is this strategy WORTH the capital it locks up? What is the Return on Margin (ROM) — `Max Profit / Margin Required`?"
+
+This split ensures that a strategy which is perfectly legal but requires ₹5,00,000 in margin to earn ₹20,000 max profit (ROM = 0.04x) gets scored low on Dim 9 without being dropped for compliance issues. The strategy stays in the pipeline but the Lead can compare it against leaner alternatives.
+
+**Capital Efficiency Scoring Guide:**
+
+| ROM Ratio | Score Range | Interpretation |
+|-----------|------------|----------------|
+| > 2.0x | 8-10 | Excellent — high profit potential relative to capital deployed |
+| 1.0-2.0x | 5-7 | Acceptable — margin is reasonable for the risk-reward |
+| 0.5-1.0x | 3-4 | Inefficient — significant capital lockup for modest returns |
+| 0.2-0.5x | 1-2 | Poor — capital is better deployed in alternative strategies |
+| < 0.2x | 0 | Unacceptable — margin requirement is disproportionate to any realistic profit |
 
 **Scoring Formula:**
 ```
-Confidence Score = Sum of all 10 dimension scores
-Range: 0-100
+Confidence Score = Sum of all 11 dimension scores
+Range: 0-110
 ```
 
-**Score Interpretation:**
-- 80-100: **HIGH CONFIDENCE** — Strong candidate for top-3 selection
-- 60-79: **MODERATE CONFIDENCE** — Viable but with notable caveats
-- 40-59: **LOW CONFIDENCE** — Significant concerns; include only if insufficient alternatives
-- 0-39: **REJECT** — Do not advance to final selection
+**Score Interpretation (updated for 110-point scale):**
+- 88-110: **HIGH CONFIDENCE** — Strong candidate for top-3 selection
+- 66-87: **MODERATE CONFIDENCE** — Viable but with notable caveats
+- 44-65: **LOW CONFIDENCE** — Significant concerns; include only if insufficient alternatives
+- 0-43: **REJECT** — Do not advance to final selection
 
 **Deductions (applied after base score):**
 - Each `[STALE]` flag: -5 points
 - Each `[CONFLICTING_SOURCES]` flag without resolution: -10 points
-- Each CRITICAL failure mode without mitigation: -10 points
+- Each CRITICAL failure mode (qualitative) without mitigation: -10 points
+- Each CRITICAL Greeks stress test failure without mitigation: -10 points
 - `[IV_MISMATCH]` with current regime: -15 points
 - `[COMPLIANCE_RISK]` flag: -20 points
+- `[COST_EROSION_RISK]` — transaction costs erode >30% of edge: -5 points
 
 ### 4. Output Format
 
@@ -184,7 +266,7 @@ Write your verified output to the designated verified output file. Structure:
 # Verified Strategies — [BIAS] — [EXPIRY CATEGORY]
 ## Run: [run_id]
 ## Verifier: [bias]-[expiry_category]
-## Rubric Version: [Rubric v1.0]
+## Rubric Version: [Rubric v2.0]
 ## IV Regime at Verification: [regime]
 ## Strategies Evaluated: [count]
 ## Strategies Passing: [count with score >= 40]
@@ -193,7 +275,7 @@ Write your verified output to the designated verified output file. Structure:
 
 ### Strategy: [Strategy Name]
 
-#### Confidence Score: [XX]/100 [Rubric v1.0]
+#### Confidence Score: [XX]/110 [Rubric v2.0]
 | Dimension | Score | Justification |
 |-----------|-------|---------------|
 | Edge Clarity | X/10 | [brief justification] |
@@ -204,14 +286,19 @@ Write your verified output to the designated verified output file. Structure:
 | Historical Evidence | X/10 | [brief justification] |
 | IV Regime Alignment | X/10 | [brief justification] |
 | Regulatory Compliance | X/10 | [brief justification] |
+| Capital Efficiency (ROM) | X/10 | [ROM ratio and justification] |
 | Failure Mode Resilience | X/10 | [brief justification] |
+| Greeks Robustness | X/10 | [stress test summary and justification] |
 | Source Quality | X/10 | [brief justification] |
 | **Base Score** | **XX** | |
 | Deductions | -XX | [list deductions with reasons] |
-| **Final Score** | **XX/100** | **[HIGH/MODERATE/LOW/REJECT]** |
+| **Final Score** | **XX/110** | **[HIGH/MODERATE/LOW/REJECT]** |
+
+#### Greeks Stress Test Results
+[Full stress test table from Step 1a-1d]
 
 #### Failure Mode Analysis
-[Full failure mode table from Step 1]
+[Full qualitative failure mode table from Step 1e]
 
 #### Pro/Con Debate
 **Advocate:** [Summary]
@@ -265,9 +352,12 @@ Write your verified output to the designated verified output file. Structure:
 - **Source citation requirement:** All factual claims must cite source or tag `[VERIFY: source needed]`.
 - **Staleness threshold:** Data older than 18 months flagged `[STALE — verify current applicability]`; applies -5 point deduction.
 - **Indian market primacy:** Verify all strategies reference Indian instruments. Flag any residual US references.
-- **Confidence score standardization:** Use ONLY the rubric defined in this file. Every score carries `[Rubric v1.0]` tag.
+- **Confidence score standardization:** Use ONLY the rubric defined in this file. Every score carries `[Rubric v2.0]` tag. Scores are on a 0-110 scale across 11 dimensions.
+- **Greeks stress test is mandatory:** Every strategy MUST undergo the quantitative Greeks stress test (Steps 1a-1d) BEFORE the qualitative failure mode analysis. A strategy without Greeks analysis cannot be scored on Dimension 11 and receives 0/10 for Greeks Robustness.
+- **Capital efficiency is scored, not filtered:** A strategy with poor ROM (return on margin) should receive a low score on Dimension 9 but should NOT be automatically rejected. The Lead uses this score to compare capital-efficient strategies against capital-heavy ones.
 - **Knowledge boundary handling:** One fallback; then `[HYPOTHESIS — unverified, LOW CONFIDENCE]` with full reasoning chain.
 
 ## Changelog
 
 `[Built from scratch — v1.0]`
+`[v2.0 — Major: Added mandatory Greeks Mathematical Stress Test (Steps 1a-1d: Delta stress under 1σ/2σ/3σ/gap, Gamma risk by DTE, Vega sensitivity, Rho for longer-dated). Split Dimension 8 into Regulatory Compliance (Dim 8) and Capital Efficiency/ROM (Dim 9). Added Greeks Robustness as Dimension 11. Rubric now v2.0 with 11 dimensions on 0-110 scale. Updated score interpretation thresholds. Added transaction cost erosion deduction. Added COST_EROSION_RISK flag.]`
