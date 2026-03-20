@@ -1,0 +1,67 @@
+# ==============================
+# Claude Code / IDE
+# ==============================
+.claude/
+.cursor/
+.vscode/
+
+# ==============================
+# Discarded experiments
+# ==============================
+.graveyard/
+
+# ==============================
+# Environment & secrets
+# ==============================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# ==============================
+# OS artifacts
+# ==============================
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# ==============================
+# Node / JS / TS
+# ==============================
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+.turbo/
+dist/
+build/
+*.tsbuildinfo
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ==============================
+# Runtime outputs
+# ==============================
+outputs/
+logs/
+*.log
+
+# ==============================
+# Archives / binaries
+# ==============================
+*.zip
+*.tar.gz
+*.rar
