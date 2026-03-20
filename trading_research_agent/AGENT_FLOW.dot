@@ -1,0 +1,102 @@
+digraph TradingProjectWorkflow {
+    // General Graph Settings
+    rankdir=TB;
+    nodesep=0.5;
+    ranksep=0.8;
+    fontname="sans-serif";
+    compound=true;
+    newrank=true;
+
+    // Default Node Styling
+    node [fontname="sans-serif", fontsize=10, style="filled,rounded", shape=rect, fontcolor=white];
+    edge [fontname="sans-serif", fontsize=9, color="#333333"];
+
+    // Tier 1: Project Lead
+    ProjectLead [label="Project Lead", fillcolor="#1a2b4b", fontsize=12, width=2];
+
+    // Tier 2: Strategies
+    subgraph cluster_strategy_tier {
+        label="Strategy Tier";
+        color=none;
+        BullishStrategies [label="Bullish Strategies", fillcolor="#047857"];
+        BearishStrategies [label="Bearish Strategies", fillcolor="#b91c1c"];
+    }
+
+    // Tier 3: Scouts
+    subgraph cluster_scout_tier {
+        label="Scout Tier";
+        color=none;
+        // Bullish Scouts
+        B_WebScout [label="Web-Fetch Scout", fillcolor="#6ee7b7", fontcolor="#064e3b"];
+        B_RedditScout [label="Reddit Scout", fillcolor="#6ee7b7", fontcolor="#064e3b"];
+        B_ForumScout [label="Trading Forums Scout\n...", fillcolor="#6ee7b7", fontcolor="#064e3b"];
+        
+        // Bearish Scouts
+        Be_WebScout [label="Web-Fetch Scout", fillcolor="#fca5a5", fontcolor="#7f1d1d"];
+        Be_RedditScout [label="Reddit Scout", fillcolor="#fca5a5", fontcolor="#7f1d1d"];
+        Be_ForumScout [label="Trading Forums Scout\n...", fillcolor="#fca5a5", fontcolor="#7f1d1d"];
+    }
+
+    // Scout Output Files
+    node [shape=note, fillcolor="#ffffff", fontcolor=black];
+    B_Out1 [label="Output"]; B_Out2 [label="Output"]; B_Out3 [label="Output"];
+    Be_Out1 [label="Output"]; Be_Out2 [label="Output"]; Be_Out3 [label="Output"];
+
+    // Confirmation Node (Decision Gate)
+    node [shape=diamond, fillcolor="#f3f4f6", fontcolor=black, style="filled"];
+    ConfirmStep [label="Confirm if all files generated\nsuccessfully by project lead."];
+
+    // Tier 4: Orchestrators
+    node [shape=rect, style="filled,rounded", fontcolor=white];
+    BullishOrchestrator [label="Bullish Orchestrator", fillcolor="#047857"];
+    BearishOrchestrator [label="Bearish Orchestrator", fillcolor="#b91c1c"];
+
+    // Tier 5: Verifiers
+    // Bullish Verifiers
+    B_V1 [label="Verifier:\nStrategy #1", fillcolor="#6ee7b7", fontcolor="#064e3b"];
+    B_V2 [label="Verifier:\nStrategy #2", fillcolor="#6ee7b7", fontcolor="#064e3b"];
+    B_V3 [label="Verifier:\nStrategy #3", fillcolor="#6ee7b7", fontcolor="#064e3b"];
+    
+    // Bearish Verifiers
+    Be_V1 [label="Verifier:\nStrategy #4", fillcolor="#fca5a5", fontcolor="#7f1d1d"];
+    Be_V2 [label="Verifier:\nStrategy #5", fillcolor="#fca5a5", fontcolor="#7f1d1d"];
+    Be_V3 [label="Verifier:\nStrategy #6", fillcolor="#fca5a5", fontcolor="#7f1d1d"];
+
+    // Final Output Files
+    node [shape=note, fillcolor="#ffffff", fontcolor=black];
+    Final_B1 [label="Output file"]; Final_B2 [label="Output file"]; Final_B3 [label="Output file"];
+    Final_Be1 [label="Output file"]; Final_Be2 [label="Output file"]; Final_Be3 [label="Output file"];
+
+    // Connections: Downward Flow
+    ProjectLead -> BullishStrategies;
+    ProjectLead -> BearishStrategies;
+
+    BullishStrategies -> {B_WebScout B_RedditScout B_ForumScout};
+    BearishStrategies -> {Be_WebScout Be_RedditScout Be_ForumScout};
+
+    B_WebScout -> B_Out1; B_RedditScout -> B_Out2; B_ForumScout -> B_Out3;
+    Be_WebScout -> Be_Out1; Be_RedditScout -> Be_Out2; Be_ForumScout -> Be_Out3;
+
+    // The logic requested: All scout outputs lead toward Orchestrators via the Confirm Step
+    {B_Out1 B_Out2 B_Out3 Be_Out1 Be_Out2 Be_Out3} -> ConfirmStep [style=dashed];
+    ProjectLead -> ConfirmStep [label=" Approval Check", color="#1a2b4b"];
+
+    ConfirmStep -> BullishOrchestrator;
+    ConfirmStep -> BearishOrchestrator;
+
+    BullishOrchestrator -> {B_V1 B_V2 B_V3};
+    BearishOrchestrator -> {Be_V1 Be_V2 Be_V3};
+
+    B_V1 -> Final_B1; B_V2 -> Final_B2; B_V3 -> Final_B3;
+    Be_V1 -> Final_Be1; Be_V2 -> Final_Be2; Be_V3 -> Final_Be3;
+
+    // Connections: Feedback Loops (Dashed arrows back to Lead)
+    edge [style=dashed, constraint=false];
+    {B_Out1 B_Out2 B_Out3 Be_Out1 Be_Out2 Be_Out3} -> ProjectLead;
+    {Final_B1 Final_B2 Final_B3 Final_Be1 Final_Be2 Final_Be3} -> ProjectLead;
+
+    // Rank Alignment to keep it clean
+    {rank=same; BullishStrategies; BearishStrategies;}
+    {rank=same; B_WebScout; B_RedditScout; B_ForumScout; Be_WebScout; Be_RedditScout; Be_ForumScout;}
+    {rank=same; BullishOrchestrator; BearishOrchestrator;}
+}

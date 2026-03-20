@@ -1,0 +1,77 @@
+{
+  "hooks": {
+    "SessionStart": [
+    {
+      "matcher": "startup",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-run-environment-check.sh\"",
+          "timeout": 15
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/file-write-lock.py\" acquire \"$FILE_PATH\"",
+          "timeout": 35
+        }
+      ]
+    },
+    {
+      "matcher": "Agent",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/context-window-monitor.sh\"",
+          "timeout": 10
+        },
+        {
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/iv-environment-pre-check.sh\"",
+          "timeout": 20
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/file-write-lock.py\" release \"$FILE_PATH\"",
+          "timeout": 10
+        },
+        {
+          "type": "command",
+          "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/rule-updater.py\" \"$FILE_PATH\"",
+          "timeout": 15
+        },
+        {
+          "type": "command",
+          "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/output-integrity-validator.py\" \"$FILE_PATH\"",
+          "timeout": 20
+        }
+      ]
+    }
+  ],
+  "SubagentStop": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scout-health-monitor.sh\" check",
+          "timeout": 15
+        }
+      ]
+    }
+  ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "trading-research-agent",
+  "version": "1.0.0",
+  "description": "Four-tier hierarchical multi-agent pipeline that mines, filters, validates, and ranks high-probability bullish and bearish options trading strategies for the Indian stock market (NSE/BSE derivatives).",
+  "author": {
+    "name": "MyAgents"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MyAgents/trading-research-agent"
+  }
+}

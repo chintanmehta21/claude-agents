@@ -1,0 +1,11 @@
+# Pipeline run outputs (regenerated each run)
+outputs/
+
+# File write lock artifacts
+*.lock
+
+# Rule updater audit log
+rule_updater_audit.log
+
+# Local settings
+.claude/*.local.md
