@@ -205,6 +205,21 @@ def validate_output_file(filepath: str) -> dict:
             f"documented Indian translation"
         )
 
+    # Check for regime performance matrix
+    if 'Regime Performance Matrix' not in content and 'regime_performance_matrix' not in content:
+        result["warnings"].append(f"MISSING_REGIME_MATRIX: {os.path.basename(filepath)} — Missing Regime Performance Matrix")
+
+    # Check for executor parameters
+    if 'executor_params' not in content and 'Executor Parameters' not in content:
+        result["warnings"].append(f"MISSING_EXECUTOR_PARAMS: {os.path.basename(filepath)} — Missing Executor Parameters block")
+
+    # Check for pts convention (warn if ₹ appears in P&L fields)
+    rupee_in_pl = re.findall(r'(?:Max Profit|Max Loss|Profit Target|Stop Loss).*?₹\d', content)
+    if rupee_in_pl:
+        result["warnings"].append(
+            f"PTS_CONVENTION: {os.path.basename(filepath)} — P&L values may be in ₹ instead of pts: {str(rupee_in_pl[:3])}"
+        )
+
     # Determine final status
     if result["errors"]:
         result["status"] = "FAIL"
