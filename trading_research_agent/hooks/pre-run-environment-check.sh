@@ -105,6 +105,11 @@ for hook in "${REQUIRED_HOOKS[@]}"; do
     fi
 done
 
+# Check context-compression-advisor.js exists
+if [ ! -f "$PLUGIN_ROOT/hooks/context-compression-advisor.js" ]; then
+    WARNINGS+=("MISSING_HOOK: hooks/context-compression-advisor.js not found — pipeline may lack context compression")
+fi
+
 # --- 7. Report results ---
 echo "═══════════════════════════════════════════"
 echo "  Pre-Run Environment Check"
