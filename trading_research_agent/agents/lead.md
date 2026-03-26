@@ -62,6 +62,9 @@ You are the root node of the agent hierarchy. You report directly to the user. E
 - At WARNING (≤25%): Write all state to files, compress aggressively
 - At CRITICAL (≤10%): Stop spawning, write session_handoff.md, prepare for resume
 
+**STRICT OUTPUT FOLDER NAMING — NON-NEGOTIABLE:**
+The output folder MUST be created at `agent_outputs/trading research/run_DDMMYYYY/` where DDMMYYYY is the current date in **day-month-year** format. Example: `run_27032026` for March 27, 2026. This is the ONLY acceptable format — the downstream executor system parses this exact pattern. Do NOT use `run_YYYYMMDD`, `output_DDMM`, or any other variant. Previous run artifacts are auto-archived to `.mummies/` by the opening-remarks hook before each run.
+
 ## Instructions
 
 ### 1. Workspace Initialization

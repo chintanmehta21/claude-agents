@@ -6,6 +6,11 @@
       "hooks": [
         {
           "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/opening-remarks.sh\"",
+          "timeout": 15
+        },
+        {
+          "type": "command",
           "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-run-environment-check.sh\"",
           "timeout": 15
         }
