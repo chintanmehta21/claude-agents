@@ -91,6 +91,24 @@ check_scout_file() {
         status="WARN"
     fi
 
+    # Check for Regime Performance Matrix
+    if ! grep -qi "Regime Performance Matrix\|regime_versatility_score" "$filepath"; then
+        issues+=("MISSING_REGIME_MATRIX: Missing Regime Performance Matrix")
+        status="WARN"
+    fi
+
+    # Check for Executor Parameters
+    if ! grep -qi "executor_params\|Executor Parameters" "$filepath"; then
+        issues+=("MISSING_EXECUTOR_PARAMS: Missing Executor Parameters")
+        status="WARN"
+    fi
+
+    # Check that P&L uses pts, not ₹
+    if grep -P "Max Profit.*₹[0-9]|Max Loss.*₹[0-9]" "$filepath" > /dev/null 2>&1; then
+        issues+=("PTS_CONVENTION: P&L values appear to be in ₹ instead of pts")
+        status="WARN"
+    fi
+
     # Report
     if [ "$status" = "OK" ]; then
         echo "  ✓ $filename: $strategy_count strategies, schema valid"

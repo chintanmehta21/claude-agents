@@ -27,8 +27,22 @@ Parse the following flags from the command arguments. Use defaults where not spe
 | `--iv-filter` | `true`, `false` | `true` | Whether to filter strategies by current IV regime compatibility |
 | `--dedup` | `true`, `false` | `true` | Whether to run cross-scout deduplication |
 | `--dry-run` | `true`, `false` | `false` | Validate configuration and report plan without executing |
+| `--resume` | `true`, `false` | `false` | Resume a previously suspended run from session_handoff.md |
 
 If no arguments are provided, run with all defaults (full mode, all expiries, output in current working directory).
+
+### 1b. Resume Check
+
+If `--resume=true`:
+1. Look for `session_handoff.md` in the most recent output directory
+2. If found, read it and extract:
+   - Pipeline stage at suspension
+   - Completed work
+   - Remaining work queue
+   - Shared context snapshot
+3. Pass all of this to the Project Lead with the resume flag
+4. Skip Pre-Flight Validation (already done in original run)
+5. The Lead's Resume/Recovery Logic (Section 1b of lead.md) handles the rest
 
 ### 2. Pre-Flight Validation
 
@@ -65,6 +79,9 @@ Before spending tokens on the pipeline:
 
    Pipeline Files: ✓ All present
    Output Directory: <resolved_output_path>/
+   Output Format: Points-based (P&L in pts, margin/costs in ₹)
+   Regime Matrix: Required (12 regime combos per strategy)
+   Executor Params: Required (algo-trading ready)
    ```
 
 5. **If `--dry-run=true`:** Report the above configuration and exit without spawning any agents. Show what WOULD happen:
@@ -157,3 +174,4 @@ After the Lead reports completion:
 ## Changelog
 
 `[Built from scratch — v1.0]`
+`[v1.1 — Added --resume flag for session handoff recovery. Added pts format, regime matrix, and executor params to config report.]`

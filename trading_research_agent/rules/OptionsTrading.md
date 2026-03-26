@@ -17,6 +17,25 @@ Owned by the **Project Lead** (`agents/lead.md`). Updated by the `rule-updater.p
 
 ---
 
+## Points (pts) Convention
+
+**All strategy P&L, payoff profiles, breakevens, targets, stops, and theta decay values in this pipeline are expressed in POINTS (pts), not rupees.** Points are universal across lot sizes and capital bases.
+
+| Metric | Unit | Notes |
+|--------|------|-------|
+| Max Profit / Max Loss | pts | Per lot, in underlying points |
+| Breakeven | ATM ± X pts | Relative to entry ATM strike |
+| Profit Target / Stop Loss | pts or % of max-profit-pts | |
+| Theta Profile | pts/day | Per lot |
+| Greeks P&L Impact | pts | Delta, Gamma, Vega effects in pts |
+| Margin Required | ₹ | Stays in rupees — broker-specific |
+| Transaction Costs (STT, brokerage, exchange charges) | ₹ per lot | Stays in rupees — broker-specific |
+| ROM (Return on Margin) | ratio | `(max_profit_pts × lot_size × point_value) / margin_₹` |
+
+**Why pts:** A 50-pt edge on an Iron Condor is the same structural edge whether Nifty is at 18000 or 25000, whether you trade 1 lot or 100. Rupee values are derived at execution time by multiplying pts × lot_size.
+
+---
+
 ## 1. Exchange Structure
 
 ### NSE (National Stock Exchange)
