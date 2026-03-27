@@ -1,0 +1,54 @@
+{
+  "india_vix": {
+    "current_level": 22.09,
+    "recent_range": "13.70 (Feb 27) to 22.65 (Mar 13), now 22.09",
+    "percentile_252d": "75-85 (estimated — above normal range of 10-20, elevated due to Iran-Israel geopolitical tensions)",
+    "regime": "HIGH",
+    "fetched_at": "2026-03-20T21:55:00+05:30",
+    "source": "https://www.businesstoday.in/markets/stocks/story/india-vix-market-volatility-index-in-two-days-as-bulls-attempt-recovery-520965-2026-03-17",
+    "notes": "VIX surged 65% from 13.70 to 22.65 after US-Israeli military strikes on Iran (Feb 28). Partially cooled to 19.91 on Mar 17 before bouncing to 22.09. Geopolitical premium still embedded."
+  },
+  "nse_expiry_calendar": {
+    "next_weekly": "2026-03-24 (Tuesday)",
+    "next_monthly": "2026-03-31 (Last Tuesday of March — also quarterly expiry)",
+    "next_quarterly": "2026-03-31",
+    "expiry_day": "Tuesday (revised from Thursday, effective Sep 2025)",
+    "source": "https://www.icicidirect.com/futures-and-options/articles/revised-expiry-days-for-nse-futures-and-options [VERIFY: current NSE expiry calendar]"
+  },
+  "lot_sizes": {
+    "nifty_50": 65,
+    "bank_nifty": 30,
+    "fin_nifty": 60,
+    "midcap_nifty": 120,
+    "sensex": 20,
+    "source": "https://hdfcsky.com/news/nse-revises-market-lot-sizes-for-major-index-derivatives-effective-january-2026",
+    "effective_date": "January 2026",
+    "notes": "Nifty revised from 75 to 65, FinNifty from 65 to 60, MidcapNifty from 140 to 120"
+  },
+  "sources": {
+    "websearch": [
+      "Google Search (financial news sites)",
+      "Zerodha Varsity articles (zerodha.com/varsity)",
+      "Sensibull strategy articles (sensibull.com)",
+      "MoneyControl derivatives section",
+      "Economic Times Markets"
+    ],
+    "reddit": [
+      "r/IndianStreetBets",
+      "r/IndianStockMarket",
+      "r/DalalStreetBets",
+      "r/IndiaInvestments"
+    ],
+    "forums": [
+      "traderji.com",
+      "valuepickr.com",
+      "Sensibull community discussions"
+    ],
+    "tradingview_zerodha": [
+      "TradingView India-tagged Pine Scripts",
+      "Zerodha Kite community",
+      "Sensibull strategy builder",
+      "Opstra by Definedge"
+    ]
+  }
+}

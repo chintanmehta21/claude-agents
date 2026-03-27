@@ -1,0 +1,86 @@
+{
+  "run_id": "run_20260326",
+  "timestamp": "2026-03-26T00:00:00Z",
+  "market_context": {
+    "india_vix": {
+      "current": 24.64,
+      "previous_close": 24.74,
+      "intraday_high": 25.23,
+      "intraday_low": 24.135,
+      "regime": "HIGH",
+      "regime_definition": "18-25 = HIGH volatility",
+      "note": "Near top of HIGH range, borderline EXTREME. VIX surged from 13.70 on Feb 27 to 27.17 high on Mar 23. Currently pulling back.",
+      "regime_implications": {
+        "premium_sellers": "Elevated premiums favor sellers but tail risk is real",
+        "premium_buyers": "Expensive entries but high gamma payoff potential",
+        "spreads": "Wide spreads profitable if direction correct",
+        "recommended_structures": ["credit_spreads", "iron_condors_wide", "ratio_spreads", "calendar_spreads"]
+      }
+    },
+    "nifty50": {
+      "last_close": 23306.45,
+      "change_pts": 394.05,
+      "change_pct": 1.72,
+      "lot_size": 75,
+      "support_levels": [22600, 22000, 21500],
+      "resistance_levels": [23500, 24000, 24500]
+    },
+    "banknifty": {
+      "last_close": 53708.10,
+      "change_pts": 1102.45,
+      "change_pct": 2.10,
+      "lot_size": 30,
+      "support_levels": [52000, 51000, 50000],
+      "resistance_levels": [54500, 55500, 56500]
+    },
+    "market_holiday": "2026-03-26 is Shri Ram Navami holiday - market closed",
+    "macro_drivers": [
+      "Geopolitical tensions driving FPI selling",
+      "VIX elevated from Feb lows - volatility regime shift",
+      "Banking sector showing relative strength",
+      "Recovery attempt after sharp correction"
+    ]
+  },
+  "iv_regime_filter": {
+    "active": true,
+    "current_regime": "HIGH",
+    "filter_rules": {
+      "favor": ["net_credit_strategies", "high_iv_beneficiaries", "wide_spreads"],
+      "penalize": ["naked_long_options", "narrow_spreads", "low_iv_strategies"],
+      "bonus_score": 5,
+      "penalty_score": -5
+    }
+  },
+  "sources": {
+    "validated": [
+      "traderji.com — ACCESSIBLE, forum threads with strategy discussions",
+      "tradingview.com — ACCESSIBLE, Nifty/BankNifty ideas and analysis",
+      "zerodha.com/varsity — ACCESSIBLE, comprehensive options education",
+      "5paisa.com/blog — ACCESSIBLE, strategy guides and VIX analysis",
+      "strike.money — ACCESSIBLE, strategy definitions and examples",
+      "samco.in — ACCESSIBLE, Top 8 strategies article",
+      "zerroday.com — ACCESSIBLE, 2026 strategy rankings",
+      "elearnmarkets.com — ACCESSIBLE, volatility trading strategies",
+      "quantsapp.com — ACCESSIBLE, BWB strategy articles",
+      "kotaksecurities.com — ACCESSIBLE, strategy guides",
+      "sensibull.com — ACCESSIBLE, strategy builder and analysis",
+      "moneycontain.com — ACCESSIBLE, diagonal spread guide"
+    ],
+    "inaccessible": [
+      "reddit.com/r/IndianStreetBets — PARTIAL, specific threads not indexable but community cited",
+      "optioncreator.com — NOT TESTED, not needed (sufficient sources found)"
+    ]
+  },
+  "pipeline_config": {
+    "mode": "full",
+    "biases": ["bullish", "bearish"],
+    "expiry_categories": ["weekly", "monthly", "quarterly"],
+    "output_units": "pts",
+    "regime_matrix_required": true,
+    "executor_params_required": true,
+    "confidence_rubric": "v2.1",
+    "confidence_max_score": 110,
+    "confidence_dimensions": 11,
+    "dedup_enabled": true
+  }
+}

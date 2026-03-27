@@ -1,0 +1,43 @@
+{
+  "run_id": "run_20260326",
+  "status": "COMPLETE",
+  "started_at": "2026-03-26T00:00:00Z",
+  "completed_at": "2026-03-27T00:00:00Z",
+  "mode": "full",
+  "expiry_filter": "all",
+  "max_respawns": 2,
+  "respawns_used": 0,
+  "iv_filter": true,
+  "dedup": true,
+  "output_format": "pts-based",
+  "regime_matrix": true,
+  "executor_params": true,
+  "checkpoints": [
+    {"step": "iv_regime_check", "status": "COMPLETE", "vix": 24.64, "regime": "HIGH"},
+    {"step": "source_validation", "status": "COMPLETE", "sources_validated": 8},
+    {"step": "scout_phase", "status": "COMPLETE", "files_written": 8, "strategies_found": 40},
+    {"step": "confirmation_gate", "status": "COMPLETE", "all_valid": true},
+    {"step": "orchestrator_phase", "status": "COMPLETE", "enriched_files": 6, "strategies_after_dedup": 35},
+    {"step": "verifier_phase", "status": "COMPLETE", "verified_files": 6},
+    {"step": "final_synthesis", "status": "COMPLETE", "final_files": 6, "top3_selected": 18}
+  ],
+  "errors": [],
+  "warnings": [
+    "Market holiday on 2026-03-26 (Shri Ram Navami) — data as of March 25 close",
+    "VIX at 24.64 is borderline HIGH/EXTREME — strategies optimized for HIGH but may shift",
+    "BankNifty weekly expiry discontinued Nov 2024 — BankNifty strategies use monthly/quarterly expiry cycle",
+    "Nifty weekly expiry is Tuesday (changed from Thursday in Sep 2025)"
+  ],
+  "pipeline_summary": {
+    "total_strategies_mined": 40,
+    "total_strategies_enriched": 35,
+    "total_strategies_verified": 35,
+    "top3_selected_per_category": 18,
+    "categories": 6,
+    "biases": ["bullish", "bearish"],
+    "expiry_categories": ["weekly", "monthly", "quarterly"],
+    "highest_score": {"strategy": "Hedged Short Strangle Nifty Quarterly (Bullish)", "score": "91/110"},
+    "most_versatile": {"strategy": "Hedged Short Strangle Nifty Quarterly (Bullish)", "versatility": "10/12"},
+    "iv_regime_applied": "HIGH (VIX 24.64) — favored credit/premium-selling strategies"
+  }
+}

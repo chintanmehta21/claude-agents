@@ -1,0 +1,37 @@
+{
+  "run_id": "run_20032026",
+  "status": "COMPLETE",
+  "mode": "full",
+  "expiry_filter": "all",
+  "output_base_dir": "C:/Users/LENOVO/Documents/Claude_Code/MyAgents/agent_outputs/trading research/run_20032026",
+  "started_at": "2026-03-20T21:55:00+05:30",
+  "completed_at": "2026-03-21T01:30:00+05:30",
+  "agents_spawned": [
+    {"agent": "BullishScoutLeader", "spawned_at": "2026-03-20T21:58:00+05:30", "status": "COMPLETE"},
+    {"agent": "BearishScoutLeader", "spawned_at": "2026-03-20T21:58:00+05:30", "status": "COMPLETE"},
+    {"agent": "BullishOrchestrator", "spawned_at": "2026-03-20T23:15:00+05:30", "status": "COMPLETE"},
+    {"agent": "BearishOrchestrator", "spawned_at": "2026-03-20T23:15:00+05:30", "status": "COMPLETE"}
+  ],
+  "confirmation_gate_passed": true,
+  "checkpoints": [
+    {"event": "WORKSPACE_INITIALIZED", "timestamp": "2026-03-20T21:55:00+05:30"},
+    {"event": "SCOUTING_COMPLETE", "timestamp": "2026-03-20T22:40:00+05:30"},
+    {"event": "CONFIRMATION_GATE_PASSED", "timestamp": "2026-03-20T22:45:00+05:30"},
+    {"event": "ORCHESTRATION_COMPLETE", "timestamp": "2026-03-21T00:15:00+05:30"},
+    {"event": "FINAL_SYNTHESIS_COMPLETE", "timestamp": "2026-03-21T01:30:00+05:30"}
+  ],
+  "pipeline_stats": {
+    "strategies_mined": 40,
+    "strategies_enriched": 35,
+    "strategies_verified": 35,
+    "strategies_passed_70plus": 15,
+    "final_selections": 14,
+    "insufficient_categories": 4
+  },
+  "errors": [],
+  "warnings": [
+    "[MCP_SUGGESTION: BraveSearch MCP not configured — scouts will use WebSearch/WebFetch as primary tools]",
+    "[LOT_SIZE_UPDATE: Nifty lot size revised from 75 to 65 effective Jan 2026 — rules/OptionsTrading.md updated]",
+    "[SEBI_WEEKLY_RATIONALIZATION: BankNifty/Midcap/FinNifty weekly options may not exist — dominant filter in weekly verification failures]"
+  ]
+}
