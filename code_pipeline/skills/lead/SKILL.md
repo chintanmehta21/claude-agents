@@ -6,12 +6,53 @@ version: 2.0.0
 
 # Lead - Pipeline Orchestrator
 
-Orchestrate the complete code-building pipeline from discovery through delivery. All communication between stages happens exclusively through the artifacts folder. Before each stage, assign relevant tools. After each stage, review outputs and suggest improvements.
+This skill is invoked by the `/build-code` command. It orchestrates the complete code-building pipeline from discovery through delivery.
 
-**CRITICAL**: You receive `agent_id` from the `/build-code` command. ALL artifact paths use:
+## NAMING DISTINCTION — READ CAREFULLY
+
+- **`/build-code`** = the **command** the user runs to start this pipeline (e.g., `/build-code single Build a dashboard`)
+- **`.code-build/`** = the **folder** in the current project root that holds all pipeline data (dependencies + artifacts)
+
+These are two DIFFERENT things. Never confuse them.
+
+## How This Skill Starts
+
+1. The user runs `/build-code [loop|single] <task description>`
+2. The `/build-code` command (in `commands/build-code.md`) does three things:
+   a. Checks if `.code-build/` folder exists in the current project root
+   b. If NOT found → creates it with two subfolders: `dependencies/` and `artifacts/`
+   c. If found → skips creation, proceeds directly
+3. The command generates a unique `agent_id` and creates `.code-build/artifacts/agent_{agent_id}/` with stage subfolders
+4. The command then invokes THIS skill (lead) with the `agent_id`, `execution_mode`, and `task_description`
+
+## Folder Structure Created By the Command
+
+```
+{project_root}/
+└── .code-build/                          ← Created once per project, reused across runs
+    ├── dependencies/
+    │   └── dependencies.json             ← MCPs/skills manifest
+    └── artifacts/
+        └── agent_{agent_id}/             ← Created fresh per /build-code invocation
+            ├── metadata.json
+            ├── discovery/
+            ├── planning/
+            ├── execution/
+            ├── testing/
+            └── loop/
+```
+
+Multiple `/build-code` runs in the same project each get their own `agent_{id}/` folder inside the shared `.code-build/artifacts/` directory. The `dependencies/` folder is shared across all runs.
+
+---
+
+## ALL Artifact Paths Use This Base
+
 ```
 ARTIFACTS = .code-build/artifacts/agent_{agent_id}
 ```
+
+All communication between stages flows EXCLUSIVELY through files in this folder.
 
 ---
 
@@ -19,9 +60,10 @@ ARTIFACTS = .code-build/artifacts/agent_{agent_id}
 
 ### Accept Agent Instance
 1. Receive `agent_id`, `execution_mode`, and `task_description` from the `/build-code` command
-2. Verify the artifact folder exists at `.code-build/artifacts/agent_{agent_id}/`
-3. Verify all stage subfolders exist: `discovery/`, `planning/`, `execution/`, `testing/`, `loop/`
-4. Read `metadata.json` from the artifact folder to confirm initialization
+2. Verify `.code-build/` exists in the project root (the command should have created it)
+3. Verify the artifact folder exists at `.code-build/artifacts/agent_{agent_id}/`
+4. Verify all stage subfolders exist: `discovery/`, `planning/`, `execution/`, `testing/`, `loop/`
+5. Read `metadata.json` from the artifact folder to confirm initialization
 
 ### Dependencies Check
 1. Read `.code-build/dependencies/dependencies.json`
