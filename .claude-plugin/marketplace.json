@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "CM_Agents",
+  "description": "Custom agents and plugins by CM",
+  "owner": {
+    "name": "CM"
+  },
+  "plugins": [
+    {
+      "name": "code-pipeline",
+      "description": "End-to-end code building pipeline agent with planning, execution, testing, and iterative loop support",
+      "source": "./code_pipeline",
+      "category": "development"
+    }
+  ]
+}

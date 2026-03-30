@@ -1,0 +1,3 @@
+# Generated pipeline artifacts (created in target project)
+.code-build/artifacts/
+.code-build/dependencies/dependencies.json

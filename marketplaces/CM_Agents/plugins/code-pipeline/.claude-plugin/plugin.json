@@ -1,0 +1,8 @@
+{
+  "name": "code-pipeline",
+  "description": "End-to-end code building pipeline agent with planning, execution, testing, and iterative loop support. Orchestrates brainstorming, subagent-driven development, test-driven development, code review, and practical verification.",
+  "version": "1.0.0",
+  "author": {
+    "name": "CodePipeline"
+  }
+}

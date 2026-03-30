@@ -1,0 +1,5 @@
+{
+  "name": "code-pipeline",
+  "description": "Code-building pipeline with iterative loop and single-run modes",
+  "version": "1.0.0"
+}
