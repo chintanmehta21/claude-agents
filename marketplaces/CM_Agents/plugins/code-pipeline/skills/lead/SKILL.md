@@ -94,6 +94,80 @@ All communication between stages flows EXCLUSIVELY through files in this folder.
 }
 ```
 
+### Task Classification
+
+Classify the task into one or more categories. This classification drives ALL downstream tool assignments.
+
+1. Analyze the `task_description` and architecture discovery results
+2. Assign **task tags** — one or more of:
+   - `frontend` — UI components, pages, layouts, styling, client-side logic
+   - `database` — Schema changes, migrations, queries, ORM work
+   - `backend` — API endpoints, server logic, middleware
+   - `hosting-vercel` — Project deployed on Vercel
+   - `hosting-render` — Project deployed on Render
+   - `database-supabase` — Supabase is the backend database
+3. Write classification to `.code-build/artifacts/agent_{agent_id}/discovery/task-classification.json`:
+```json
+{
+  "tags": ["frontend", "database-supabase", "hosting-vercel"],
+  "detected_from": "task_description + architecture.json",
+  "mandatory_tools": {
+    "frontend": {
+      "skills": ["ui-ux-pro-max"],
+      "mcps": ["playwright", "shadcn-ui", "claude-preview"]
+    },
+    "database-supabase": {
+      "skills": [],
+      "mcps": ["supabase"]
+    },
+    "hosting-vercel": {
+      "skills": [],
+      "mcps": ["vercel"]
+    },
+    "hosting-render": {
+      "skills": [],
+      "mcps": ["render"]
+    }
+  }
+}
+```
+
+### Mandatory Tool Provisioning (PREREQUISITE — Runs Before Any Subagent)
+
+**This is a hard gate.** No subagent may be spawned until all mandatory tools for the detected task tags are verified as available.
+
+1. For each tag in `task-classification.json`, collect all mandatory tools
+2. For each mandatory tool, verify availability:
+   - **Skills**: Check if the skill name appears in the available skills list in your context
+   - **MCPs**: Attempt to call a list/info tool with the MCP prefix (e.g., `mcp__Shadcn_UI__list_components`). If the call succeeds, mark `available`. If it errors with "unknown tool", mark `missing`.
+3. **Install missing tools before proceeding:**
+   - **`playwright` MCP**: Search MCP registry with `mcp__mcp-registry__search_mcp_registry` keywords `["playwright", "browser", "testing"]`, then install via `suggest_connectors`
+   - **`supabase` MCP**: Search MCP registry with keywords `["supabase", "database", "postgres"]`, then install
+   - **`vercel` MCP**: Should be available via the vercel plugin. If missing, inform user to install `vercel@claude-plugins-official` plugin
+   - **`render` MCP**: Search MCP registry with keywords `["render", "deployment", "hosting"]`, then install
+   - **`shadcn-ui` MCP**: Should be builtin. If missing, inform user
+   - **`claude-preview` MCP**: Should be builtin. If missing, inform user
+   - **`ui-ux-pro-max` skill**: Should be available from installed plugins. If missing, inform user to install the plugin that provides it
+4. After installation attempts, re-verify each tool
+5. Update `.code-build/dependencies/dependencies.json` with current status
+6. **If any mandatory MCP is still missing after install attempts**: Warn the user and ask whether to proceed without it or abort. Do NOT silently skip.
+7. Write provisioning report to `.code-build/artifacts/agent_{agent_id}/discovery/provisioning-report.json`:
+```json
+{
+  "verified_tools": {
+    "skills": ["ui-ux-pro-max"],
+    "mcps": ["playwright", "supabase", "vercel", "shadcn-ui"]
+  },
+  "missing_tools": [],
+  "install_attempts": [
+    {"tool": "playwright", "method": "mcp-registry", "result": "installed"}
+  ],
+  "ready": true
+}
+```
+
+**Only after `ready: true` may the pipeline proceed to Phase 1.**
+
 ---
 
 ## Phase 1: Discovery
@@ -210,31 +284,61 @@ Format:
 ## Phase 3: Execution
 
 ### 3A: Pre-Stage Tool Assignment
+
+**Read inputs:**
 1. Read `discovery/architecture.json` for project type
-2. Read `planning/plan.md` and `planning/lead-review.md` for task details
-3. Assign tools per task type:
-   - **Frontend/UI tasks**: Shadcn UI MCP, `/web-design-guidelines`
-   - **Backend tasks**: Database MCPs, API testing tools
-   - **All implementation tasks**: `superpowers:subagent-driven-development`, `superpowers:test-driven-development`
-   - **Documentation lookups**: Context7 MCP
-4. Search registry for project-specific MCPs (e.g., if using Prisma, search for Prisma tools)
-5. **Prefer official sources only**
-6. **Write to**: `.code-build/artifacts/agent_{agent_id}/execution/available-tools.json`
-   ```json
-   {
-     "stage": "execution",
-     "assigned_skills": ["superpowers:subagent-driven-development", "superpowers:test-driven-development"],
-     "assigned_mcps": [
-       {"name": "shadcn-ui", "tools_prefix": "mcp__Shadcn_UI__", "use_for": "UI component creation and demos"},
-       {"name": "context7", "tools_prefix": "mcp__21f01ab2", "use_for": "Library documentation lookups"}
-     ],
-     "per_task_assignments": {
-       "Task 1: Create Dashboard": ["shadcn-ui"],
-       "Task 2: Add API endpoint": ["context7"]
-     },
-     "instructions": "You MUST use the assigned MCPs for each task. For UI work, always check shadcn-ui for available components FIRST. For library questions, use context7."
-   }
-   ```
+2. Read `discovery/task-classification.json` for task tags and mandatory tools
+3. Read `discovery/provisioning-report.json` for verified tool availability
+4. Read `planning/plan.md` and `planning/lead-review.md` for task details
+
+**Assign tools by task tag (MANDATORY — not optional):**
+
+| Task Tag | Required Skills | Required MCPs | Usage |
+|----------|----------------|---------------|-------|
+| `frontend` | `ui-ux-pro-max` | `shadcn-ui` (`mcp__Shadcn_UI__`), `playwright` (screenshots), `claude-preview` (`mcp__Claude_Preview__`) | `ui-ux-pro-max` MUST be invoked for any UI design decisions. Shadcn UI MUST be checked for components before building custom ones. Playwright for screenshot verification during dev. |
+| `database-supabase` | — | `supabase` | ALL database queries, schema changes, migrations, and RLS policies MUST go through the Supabase MCP. |
+| `hosting-vercel` | — | `vercel` (`mcp__plugin_vercel_vercel__`) | Deployment verification, environment variable checks, and log inspection. |
+| `hosting-render` | — | `render` | Deployment verification and log inspection. |
+| `backend` | — | `context7` (`mcp__21f01ab2`) | Library documentation lookups for any backend framework/library questions. |
+
+**Always assigned (all task types):**
+- `superpowers:subagent-driven-development` (REQUIRED)
+- `superpowers:test-driven-development` (REQUIRED)
+- `context7` MCP for documentation lookups (REQUIRED)
+
+**Pre-spawn verification gate:**
+Before writing the tool manifest, re-verify each assigned MCP is still responding. If any mandatory MCP from the task classification is unreachable:
+1. Attempt reinstall
+2. If still unreachable, warn user and ask whether to proceed or abort
+3. Do NOT spawn subagents with missing mandatory tools
+
+**Write to**: `.code-build/artifacts/agent_{agent_id}/execution/available-tools.json`
+```json
+{
+  "stage": "execution",
+  "task_tags": ["frontend", "database-supabase", "hosting-vercel"],
+  "assigned_skills": [
+    "superpowers:subagent-driven-development",
+    "superpowers:test-driven-development",
+    "ui-ux-pro-max"
+  ],
+  "assigned_mcps": [
+    {"name": "shadcn-ui", "tools_prefix": "mcp__Shadcn_UI__", "use_for": "UI component library — MUST check before building custom components", "mandatory_for": ["frontend"]},
+    {"name": "playwright", "tools_prefix": "mcp__playwright__", "use_for": "Screenshot verification during UI development", "mandatory_for": ["frontend"]},
+    {"name": "claude-preview", "tools_prefix": "mcp__Claude_Preview__", "use_for": "Dev server preview and visual inspection", "mandatory_for": ["frontend"]},
+    {"name": "supabase", "tools_prefix": "mcp__supabase__", "use_for": "ALL database operations — queries, schema, migrations, RLS", "mandatory_for": ["database-supabase"]},
+    {"name": "vercel", "tools_prefix": "mcp__plugin_vercel_vercel__", "use_for": "Deployment verification, env vars, logs", "mandatory_for": ["hosting-vercel"]},
+    {"name": "render", "tools_prefix": "mcp__render__", "use_for": "Deployment verification, logs", "mandatory_for": ["hosting-render"]},
+    {"name": "context7", "tools_prefix": "mcp__21f01ab2", "use_for": "Library documentation lookups", "mandatory_for": ["all"]}
+  ],
+  "per_task_assignments": {
+    "Task 1: Create Dashboard UI": ["shadcn-ui", "playwright", "ui-ux-pro-max"],
+    "Task 2: Add database schema": ["supabase"],
+    "Task 3: Deploy and verify": ["vercel"]
+  },
+  "instructions": "You MUST use the assigned MCPs for each task. For UI work: invoke ui-ux-pro-max skill for design decisions, check shadcn-ui for components FIRST, take Playwright screenshots to verify. For database work with Supabase: ALL operations go through the Supabase MCP. For deployment: use the hosting MCP for verification. For any library questions: use context7. Skipping a mandatory tool is a pipeline violation."
+}
+```
 
 ### 3B: Write Execution Handoff
 **Write to**: `.code-build/artifacts/agent_{agent_id}/execution/handoff.json`
@@ -294,14 +398,48 @@ Format:
 ## Phase 4: Testing
 
 ### 4A: Pre-Stage Tool Assignment
+
+**Read inputs:**
 1. Read `discovery/architecture.json` for project category
-2. Assign testing tools based on project type:
-   - **Web projects**: Playwright MCP, Claude Preview, Shadcn UI MCP (for last iteration)
-   - **API projects**: curl-based testing tools
-   - **All projects**: `superpowers:requesting-code-review`, GitHub MCP
-   - **Deployed projects**: Vercel/Render/Supabase MCPs for logs
-3. **Prefer official sources only**
-4. **Write to**: `.code-build/artifacts/agent_{agent_id}/testing/available-tools.json`
+2. Read `discovery/task-classification.json` for task tags
+3. Read `discovery/provisioning-report.json` for verified tool availability
+
+**Assign testing tools by task tag (MANDATORY):**
+
+| Task Tag | Required MCPs for Testing | Usage |
+|----------|--------------------------|-------|
+| `frontend` | `playwright` (screenshots + E2E), `claude-preview` (visual inspection), `shadcn-ui` (UI improvement suggestions on last iteration) | Playwright MUST take screenshots of all new/changed UI. Claude Preview for dev server inspection. Shadcn UI only on single mode or last loop iteration. |
+| `database-supabase` | `supabase` | Verify migrations applied, check for DB errors, validate RLS policies, inspect query performance. |
+| `hosting-vercel` | `vercel` (`mcp__plugin_vercel_vercel__`) | Check deployment status, build logs, runtime logs, environment variables. |
+| `hosting-render` | `render` | Check deployment status and runtime logs. |
+| `backend` | — | curl-based endpoint testing, test runner output. |
+
+**Always assigned (all task types):**
+- `superpowers:requesting-code-review` (REQUIRED — theory testing)
+- GitHub MCP (REQUIRED — PR/code context)
+
+**Pre-spawn verification gate:**
+Re-verify each testing MCP is reachable before spawning theory-tester and practical-tester. If any mandatory MCP for the detected tags is missing, attempt reinstall. Do NOT spawn testers with missing mandatory tools without user acknowledgment.
+
+**Write to**: `.code-build/artifacts/agent_{agent_id}/testing/available-tools.json`
+```json
+{
+  "stage": "testing",
+  "task_tags": ["frontend", "database-supabase", "hosting-vercel"],
+  "assigned_skills": ["superpowers:requesting-code-review"],
+  "assigned_mcps": [
+    {"name": "playwright", "tools_prefix": "mcp__playwright__", "use_for": "Screenshot all new/changed UI pages, run E2E tests", "mandatory_for": ["frontend"]},
+    {"name": "claude-preview", "tools_prefix": "mcp__Claude_Preview__", "use_for": "Dev server visual inspection", "mandatory_for": ["frontend"]},
+    {"name": "shadcn-ui", "tools_prefix": "mcp__Shadcn_UI__", "use_for": "UI improvement suggestions (last iteration/single mode only)", "mandatory_for": ["frontend"], "condition": "single_or_last_iteration"},
+    {"name": "supabase", "tools_prefix": "mcp__supabase__", "use_for": "Verify migrations, check DB errors, validate RLS, query perf", "mandatory_for": ["database-supabase"]},
+    {"name": "vercel", "tools_prefix": "mcp__plugin_vercel_vercel__", "use_for": "Deployment status, build logs, runtime logs", "mandatory_for": ["hosting-vercel"]},
+    {"name": "render", "tools_prefix": "mcp__render__", "use_for": "Deployment status, runtime logs", "mandatory_for": ["hosting-render"]},
+    {"name": "github", "tools_prefix": "mcp__github__", "use_for": "PR context, code search, version control", "mandatory_for": ["all"]}
+  ],
+  "agents": ["code-reviewer"],
+  "instructions": "For frontend: Playwright MUST screenshot all new/changed pages. For Supabase: verify migrations and check for DB errors. For Vercel/Render: check deployment and runtime logs. Theory-tester MUST use superpowers:requesting-code-review. Skipping a mandatory tool is a pipeline violation."
+}
+```
 
 ### 4B: Write Testing Handoff
 **Write to**: `.code-build/artifacts/agent_{agent_id}/testing/handoff.json`

@@ -67,15 +67,24 @@
         "install_method": "plugin",
         "plugin": "superpowers@claude-plugins-official",
         "status": "unknown"
+      },
+      {
+        "name": "ui-ux-pro-max",
+        "required": false,
+        "purpose": "UI/UX design intelligence for frontend tasks — mandatory when task is tagged 'frontend'",
+        "install_method": "plugin",
+        "conditional_on_tag": "frontend",
+        "status": "unknown"
       }
     ],
     "mcps": [
       {
         "name": "shadcn-ui",
         "required": false,
-        "purpose": "UI component library for web frontend projects - used in execution and testing phases",
+        "purpose": "UI component library for web frontend projects — mandatory when task is tagged 'frontend'",
         "install_method": "builtin",
         "tool_prefix": "mcp__Shadcn_UI__",
+        "conditional_on_tag": "frontend",
         "status": "unknown"
       },
       {
@@ -90,9 +99,10 @@
       {
         "name": "playwright",
         "required": false,
-        "purpose": "Browser automation for UI screenshots and E2E testing in practical-tester",
+        "purpose": "Browser automation for UI screenshots and E2E testing — mandatory when task is tagged 'frontend'",
         "install_method": "mcp-registry",
         "registry_keywords": ["playwright", "browser", "testing"],
+        "conditional_on_tag": "frontend",
         "status": "unknown"
       },
       {
@@ -106,26 +116,29 @@
       {
         "name": "vercel",
         "required": false,
-        "purpose": "Deployment verification and log checking for Vercel-hosted projects",
+        "purpose": "Deployment verification and log checking — mandatory when task is tagged 'hosting-vercel'",
         "install_method": "plugin",
         "plugin": "vercel@claude-plugins-official",
-        "tool_prefix": "mcp__vercel__",
+        "tool_prefix": "mcp__plugin_vercel_vercel__",
+        "conditional_on_tag": "hosting-vercel",
         "status": "unknown"
       },
       {
         "name": "supabase",
         "required": false,
-        "purpose": "Database management and log checking for Supabase-backed projects",
+        "purpose": "Database management and log checking — mandatory when task is tagged 'database-supabase'",
         "install_method": "mcp-registry",
-        "registry_keywords": ["supabase", "database"],
+        "registry_keywords": ["supabase", "database", "postgres"],
+        "conditional_on_tag": "database-supabase",
         "status": "unknown"
       },
       {
         "name": "render",
         "required": false,
-        "purpose": "Deployment and log checking for Render-hosted projects",
+        "purpose": "Deployment and log checking — mandatory when task is tagged 'hosting-render'",
         "install_method": "mcp-registry",
-        "registry_keywords": ["render", "deployment"],
+        "registry_keywords": ["render", "deployment", "hosting"],
+        "conditional_on_tag": "hosting-render",
         "status": "unknown"
       },
       {
@@ -139,9 +152,10 @@
       {
         "name": "claude-preview",
         "required": false,
-        "purpose": "Dev server preview, screenshots, and UI inspection",
+        "purpose": "Dev server preview, screenshots, and UI inspection — mandatory when task is tagged 'frontend'",
         "install_method": "builtin",
         "tool_prefix": "mcp__Claude_Preview__",
+        "conditional_on_tag": "frontend",
         "status": "unknown"
       },
       {
@@ -170,8 +184,28 @@
       "mcps": []
     },
     "execution": {
-      "skills": ["superpowers:subagent-driven-development", "superpowers:test-driven-development"],
-      "mcps": ["shadcn-ui", "context7", "github"]
+      "always": {
+        "skills": ["superpowers:subagent-driven-development", "superpowers:test-driven-development"],
+        "mcps": ["context7", "github"]
+      },
+      "when_tagged": {
+        "frontend": {
+          "skills": ["ui-ux-pro-max"],
+          "mcps": ["shadcn-ui", "playwright", "claude-preview"]
+        },
+        "database-supabase": {
+          "skills": [],
+          "mcps": ["supabase"]
+        },
+        "hosting-vercel": {
+          "skills": [],
+          "mcps": ["vercel"]
+        },
+        "hosting-render": {
+          "skills": [],
+          "mcps": ["render"]
+        }
+      }
     },
     "testing_theory": {
       "skills": ["superpowers:requesting-code-review"],
@@ -179,8 +213,28 @@
       "agents": ["code-reviewer"]
     },
     "testing_practical": {
-      "skills": [],
-      "mcps": ["playwright", "claude-preview", "claude-in-chrome", "vercel", "render", "supabase", "shadcn-ui"]
+      "always": {
+        "skills": [],
+        "mcps": []
+      },
+      "when_tagged": {
+        "frontend": {
+          "skills": [],
+          "mcps": ["playwright", "claude-preview", "shadcn-ui"]
+        },
+        "database-supabase": {
+          "skills": [],
+          "mcps": ["supabase"]
+        },
+        "hosting-vercel": {
+          "skills": [],
+          "mcps": ["vercel"]
+        },
+        "hosting-render": {
+          "skills": [],
+          "mcps": ["render"]
+        }
+      }
     }
   }
 }
