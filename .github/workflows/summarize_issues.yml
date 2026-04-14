@@ -1,0 +1,45 @@
+name: Summarize new issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      models: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run AI inference
+        id: inference
+        uses: actions/ai-inference@v1
+        with:
+          prompt: |
+            I want you to summarize my Github issues, which consist of a list of three new MCP tools that have been 
+            selected from an online database. The result I want here is a concise bulleted summary that outlines 
+            what each tool does, the major skills involved in each tool, and the standout features. Please keep the 
+            summary to a total of 5-10 bullet points, focused on the specified use case. 
+
+            Here are the details about each tool:
+            - Tool 1: ________
+            - Tool 2: ________
+            - Tool 3: ________
+            The final summary should be clear and informative, highlighting the unique aspects of each tool while 
+            ensuring that it is easily digestible and actionable for readers. Aim to present the tools in a 
+            way that emphasizes their relevance and functionality in the MCP landscape.
+            Title: ${{ github.event.issue.title }}
+            Body: ${{ github.event.issue.body }}
+
+      - name: Comment with AI summary
+        run: |
+          gh issue comment $ISSUE_NUMBER --body "$RESPONSE"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RESPONSE: ${{ steps.inference.outputs.response }}
