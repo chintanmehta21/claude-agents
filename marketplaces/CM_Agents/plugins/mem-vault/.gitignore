@@ -1,0 +1,20 @@
+node_modules/
+npm-debug.log*
+package-lock.json
+bun.lock
+bun.lockb
+
+# Runtime-generated grammars (bootstrap regenerates)
+server/grammars/*.wasm
+
+# Per-project local config (user edits)
+.claude/*.local.md
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/

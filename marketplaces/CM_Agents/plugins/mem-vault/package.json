@@ -1,0 +1,25 @@
+{
+  "name": "mem-vault",
+  "version": "0.1.0",
+  "description": "Native persistent memory vault MCP server + CLI",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "mem-vault": "./server/index.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/bootstrap-grammars.js",
+    "start": "node server/index.js mcp",
+    "cli": "node server/index.js",
+    "test": "node scripts/smoke-test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "better-sqlite3": "^11.5.0",
+    "tree-sitter-wasms": "^0.1.12",
+    "web-tree-sitter": "^0.24.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

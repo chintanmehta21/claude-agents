@@ -1,0 +1,20 @@
+{
+  "name": "mem-vault",
+  "version": "0.1.0",
+  "description": "Windows-native persistent memory vault for Claude Code, Claude Code CLI, and Codex. Per-project SQLite storage, WASM tree-sitter code intelligence, cross-session continuity.",
+  "author": {
+    "name": "Vedant Barbhaya",
+    "email": "vedantbarbhaya21@gmail.com"
+  },
+  "keywords": [
+    "memory",
+    "persistence",
+    "tree-sitter",
+    "mcp",
+    "claude-mem",
+    "windows",
+    "codex",
+    "sqlite"
+  ],
+  "license": "MIT"
+}

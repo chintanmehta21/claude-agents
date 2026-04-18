@@ -11,6 +11,13 @@
       "description": "End-to-end code building pipeline agent with planning, execution, testing, and iterative loop support",
       "source": "./plugins/code-pipeline",
       "category": "development"
+    },
+    {
+      "name": "mem-vault",
+      "description": "Windows-native persistent memory for Claude Code, CC CLI, and Codex. Per-project SQLite vault + WASM tree-sitter code intelligence. Cross-client shared store.",
+      "source": "./plugins/mem-vault",
+      "category": "memory",
+      "keywords": ["memory", "persistence", "tree-sitter", "mcp", "windows", "codex"]
     }
   ]
 }

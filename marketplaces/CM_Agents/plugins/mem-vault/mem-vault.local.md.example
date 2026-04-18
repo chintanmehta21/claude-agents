@@ -1,0 +1,26 @@
+---
+# mem-vault per-project configuration
+# Copy this file to .claude/mem-vault.local.md and edit as needed.
+# Not committed by default (covered by .gitignore pattern ".claude/*.local.md").
+
+# Override vault data directory (default: %USERPROFILE%\.mem-vault)
+# vault_dir: "D:/vaults/mem-vault"
+
+# Comma-separated list of tool names to NEVER capture (default captures Edit|Write|NotebookEdit|Bash|Task)
+# capture_excludes: TodoWrite,Glob,Grep
+
+# Trim body text to N characters when capturing (default 2000)
+# max_body_chars: 2000
+
+# Skip capturing bash commands matching any of these regexes (JSON array)
+# bash_ignore_patterns: ["^(ls|pwd|cd|echo)", "^git status"]
+
+# Files whose edits should never be captured (secrets, build artifacts, etc.)
+# never_capture_paths: [".env*", "*.pem", "node_modules/**", "dist/**"]
+---
+
+# Project-scoped notes for mem-vault
+
+Free-form markdown below the frontmatter is ignored by the plugin but useful for
+human documentation of what this project's memory contains and any manual
+maintenance notes.
