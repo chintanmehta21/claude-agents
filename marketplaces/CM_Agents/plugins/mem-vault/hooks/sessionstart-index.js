@@ -19,14 +19,26 @@ const fs = require('fs');
     const cwd = payload.cwd || process.cwd();
 
     // Load modules lazily; if deps aren't installed yet, exit silently.
-    let db, paths;
+    let db, paths, settingsMod;
     try {
       db = require(path.join(pluginRoot, 'server', 'db.js'));
       paths = require(path.join(pluginRoot, 'server', 'paths.js'));
+      settingsMod = require(path.join(pluginRoot, 'server', 'settings.js'));
     } catch (e) {
       console.error('[mem-vault] session-start: deps missing, skipping (' + e.message + ')');
       process.exit(0);
     }
+
+    const settings = settingsMod.loadSettings(cwd);
+    if (settings.enabled === false || settings.session_index_enabled === false) {
+      // Honor the kill switch — don't even open the DB.
+      process.exit(0);
+    }
+    // Resolve / lazily create the per-project .mem-vault/ dir.  Idempotent.
+    try { paths.ensureProjectVault(cwd, { settings }); } catch (e) {
+      console.error('[mem-vault] ensureProjectVault failed: ' + (e.message || e));
+    }
+    const sessionLimit = Number(settings.session_index_limit) || 12;
 
     const vaultDb = paths.vaultDbPath(cwd);
     if (!fs.existsSync(vaultDb)) {
@@ -39,7 +51,7 @@ const fs = require('fs');
 
     const d = db.open(cwd);
     db.startSession(d, { client: payload.source || 'claude-code', cwd });
-    const rows = db.recentContext(d, { limit: 12 });
+    const rows = db.recentContext(d, { limit: sessionLimit });
 
     // Refresh the project-root .mem-vault/ mirror (README + recent.md).  Best-effort.
     try {
@@ -56,7 +68,27 @@ const fs = require('fs');
 
     const header = `# [mem-vault] ${paths.projectSlug(cwd)} — recent context (${rows.length} items)\n`;
     const body = rows.map(fmt).join('\n');
-    emit(header + '\n' + body + '\n');
+    const guidance = `
+
+## How to use mem-vault (IMPORTANT)
+
+You have persistent project memory via the \`mem-vault\` MCP server. **Use it proactively** — don't wait for the user to ask.
+
+**Server name is \`mem-vault\` (with a hyphen) in BOTH Claude Code and Codex.** If you call \`ReadMcpResourceTool\` or \`ListMcpResourcesTool\`, pass \`server: "mem-vault"\` — never \`mem_vault\`. Resource URIs are \`mem-vault://recent\`, \`mem-vault://status\`, \`mem-vault://timeline\`.
+
+**Before answering any question about this codebase, its history, or past decisions, call these FIRST:**
+- \`mcp__plugin_mem-vault_mem-vault__search\` — full-text search past observations, decisions, bugfixes. Call this for ANY question like "what does X do?", "why did we...?", "have we changed...?", "what's the status of...?"
+- \`mcp__plugin_mem-vault_mem-vault__smart_search\` — find symbols (functions, classes, methods) by name across the project. Call this for ANY code lookup like "where is function X?", "show me the Y class", "find the handler for Z".
+- \`mcp__plugin_mem-vault_mem-vault__timeline\` — recent activity in reverse-chronological order. Call this for "what did we do recently?", "what changed today?".
+- \`mcp__plugin_mem-vault_mem-vault__smart_outline\` — structural outline of a file before reading it. Call this BEFORE Read on unfamiliar source files to get a map.
+
+**When you finish a logical task, call:**
+- \`mcp__plugin_mem-vault_mem-vault__save_observation\` — record the decision/fix/feature so future sessions (CC, CLI, Codex) remember it. Use type=\`decision\` for choices, \`bugfix\` for fixes, \`feature\` for new capability, \`discovery\` for insights.
+- \`mcp__plugin_mem-vault_mem-vault__mark_chapter\` — mark logical boundaries in long sessions.
+
+Treat mem-vault as your first line of context retrieval, not a last resort.
+`;
+    emit(header + '\n' + body + '\n' + guidance);
   } catch (err) {
     console.error('[mem-vault] sessionstart hook error: ' + (err.message || err));
     process.exit(0); // never block session start

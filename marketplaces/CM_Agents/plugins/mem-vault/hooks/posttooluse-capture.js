@@ -17,16 +17,21 @@ const path = require('path');
 
     const cwd = payload.cwd || process.cwd();
 
-    let capture, db, paths;
+    let capture, db, paths, settingsMod;
     try {
       capture = require(path.join(pluginRoot, 'server', 'capture.js'));
       db = require(path.join(pluginRoot, 'server', 'db.js'));
       paths = require(path.join(pluginRoot, 'server', 'paths.js'));
+      settingsMod = require(path.join(pluginRoot, 'server', 'settings.js'));
     } catch (e) {
       return exit0();
     }
 
-    const obs = capture.fromToolUse(payload);
+    const settings = settingsMod.loadSettings(cwd);
+    if (settings.enabled === false) return exit0();
+    try { paths.ensureProjectVault(cwd, { settings }); } catch {}
+
+    const obs = capture.fromToolUse(payload, { settings });
     if (!obs) return exit0();
 
     const d = db.open(cwd);

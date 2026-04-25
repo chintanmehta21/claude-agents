@@ -9,6 +9,7 @@ const parsers = require('./parsers');
 const paths = require('./paths');
 const capture = require('./capture');
 const mirror = require('./project_mirror');
+const settingsMod = require('./settings');
 
 const COMMANDS = {
   status,
@@ -25,6 +26,7 @@ const COMMANDS = {
   projects: listProjects,
   mirror: cliMirror,
   'setup-codex': setupCodex,
+  dashboard: dashboard,
   help: help,
   '--help': help,
   '-h': help,
@@ -39,7 +41,16 @@ async function run(argv) {
     process.exit(1);
   }
   try {
-    const r = await fn(parseArgs(rest));
+    const args = parseArgs(rest);
+    // Resolve / lazily create the per-project .mem-vault/ before any command
+    // touches the DB.  Idempotent + cached.  Honors enabled / auto_create_project_vault.
+    if (cmd && cmd !== 'help' && cmd !== '--help' && cmd !== '-h' && cmd !== 'setup-codex' && cmd !== 'projects') {
+      try {
+        const cwd = args.cwd ? path.resolve(args.cwd) : process.cwd();
+        paths.ensureProjectVault(cwd, { settings: settingsMod.loadSettings(cwd) });
+      } catch (_) { /* never block CLI on ensure failure */ }
+    }
+    const r = await fn(args);
     if (r !== undefined) process.stdout.write(typeof r === 'string' ? r : JSON.stringify(r, null, 2) + '\n');
   } catch (err) {
     process.stderr.write(`[mem-vault] ${err.message || err}\n`);
@@ -73,6 +84,14 @@ function cwdFromArgs(args) {
 
 function status(args) {
   const cwd = cwdFromArgs(args);
+  if (isDisabled(cwd)) {
+    return {
+      ...DISABLED_MSG,
+      project_slug: paths.projectSlug(cwd),
+      vault_dir: paths.projectDir(cwd),
+      cwd,
+    };
+  }
   const d = db.open(cwd);
   const s = db.stats(d);
   return {
@@ -84,8 +103,15 @@ function status(args) {
   };
 }
 
+const DISABLED_MSG = { disabled: true, message: 'mem-vault is disabled for this project (set `enabled: true` in .claude/mem-vault.local.md to re-enable).' };
+
+function isDisabled(cwd) {
+  return settingsMod.loadSettings(cwd).enabled === false;
+}
+
 function cliSearch(args) {
   const cwd = cwdFromArgs(args);
+  if (isDisabled(cwd)) return DISABLED_MSG;
   const d = db.open(cwd);
   return db.search(d, {
     query: args.q || args.query || args._[0] || '',
@@ -96,6 +122,7 @@ function cliSearch(args) {
 
 function cliTimeline(args) {
   const cwd = cwdFromArgs(args);
+  if (isDisabled(cwd)) return DISABLED_MSG;
   const d = db.open(cwd);
   return db.timeline(d, {
     limit: Number(args.limit) || 50,
@@ -229,10 +256,10 @@ function setupCodex() {
   let existing = '';
   if (fs.existsSync(cfg)) existing = fs.readFileSync(cfg, 'utf8');
 
-  if (existing.includes('[mcp_servers.mem-vault]')) {
-    // Replace existing block.
+  if (existing.includes('[mcp_servers.mem_vault]') || existing.includes('[mcp_servers.mem-vault]')) {
+    // Replace existing block (handles both legacy `mem_vault` and current `mem-vault` keys).
     const replaced = existing.replace(
-      /\[mcp_servers\.mem-vault\][\s\S]*?(?=\n\[|\n*$)/,
+      /\[mcp_servers\.mem[-_]vault\][\s\S]*?(?=\n\[|\n*$)/,
       entry.trimEnd() + '\n'
     );
     fs.writeFileSync(cfg, replaced, 'utf8');
@@ -245,12 +272,35 @@ function setupCodex() {
 
 function codexTomlEntry(pluginRoot) {
   const serverPath = path.join(pluginRoot, 'server', 'index.js').replace(/\\/g, '\\\\');
+  // Use hyphenated name to match Claude Code's `.mcp.json` registration so the
+  // same server name (`mem-vault`) works across both clients.  TOML bare keys
+  // support hyphens.
   return `
 [mcp_servers.mem-vault]
 command = "node"
 args = ["${serverPath}", "mcp"]
 env = { MEM_VAULT_ROOT = "${pluginRoot.replace(/\\/g, '\\\\')}", MEM_VAULT_CLIENT = "codex" }
 `;
+}
+
+/** Launch the local web dashboard. */
+function dashboard(args) {
+  const dash = require('../dashboard/server');
+  // Open-browser precedence: --no-open flag (false) > settings.dashboard_open_browser > true.
+  let open;
+  if (args['no-open']) {
+    open = false;
+  } else {
+    const s = settingsMod.loadSettings(process.env.MEM_VAULT_CWD || process.cwd());
+    open = s.dashboard_open_browser !== false;
+  }
+  dash.start({
+    open,
+    port: args.port ? Number(args.port) : undefined,
+    host: args.host || undefined,
+  });
+  // Keep the event loop alive — the http server holds it; just don't return.
+  return new Promise(() => {});
 }
 
 function help() {
@@ -282,6 +332,7 @@ Admin:
   projects                               List all project vaults
   mirror [--limit 25]                    Refresh <project>/.mem-vault/ README + recent.md
   setup-codex                            Write Codex MCP config to ~/.codex/config.toml
+  dashboard [--port 37777] [--no-open]   Launch local web dashboard
 `;
 }
 

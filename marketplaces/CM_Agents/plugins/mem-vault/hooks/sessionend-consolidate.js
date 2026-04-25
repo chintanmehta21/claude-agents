@@ -14,24 +14,32 @@ const path = require('path');
     try { payload = raw ? JSON.parse(raw) : {}; } catch {}
     const cwd = payload.cwd || process.cwd();
 
-    let db;
+    let db, settingsMod, paths;
     try {
       db = require(path.join(pluginRoot, 'server', 'db.js'));
+      settingsMod = require(path.join(pluginRoot, 'server', 'settings.js'));
+      paths = require(path.join(pluginRoot, 'server', 'paths.js'));
     } catch { return exit0(); }
+
+    const settings = settingsMod.loadSettings(cwd);
+    if (settings.enabled === false) return exit0();
+    try { paths.ensureProjectVault(cwd, { settings }); } catch {}
 
     const d = db.open(cwd);
     const sid = db.currentSession(d, payload.source || 'claude-code');
     if (sid) db.endSession(d, sid);
 
-    // Lightweight consolidation: drop duplicate bash/edit observations with identical titles
-    // captured within the same second.
-    d.exec(`
-      DELETE FROM observations WHERE rowid IN (
-        SELECT MIN(rowid) FROM observations
-        GROUP BY title, type, substr(ts, 1, 19)
-        HAVING COUNT(*) > 1
-      );
-    `);
+    // Consolidation is opt-in — default false.  Closing the session row is
+    // always safe; the dedupe DELETE only runs when explicitly requested.
+    if (settings.consolidate_on_session_end === true) {
+      d.exec(`
+        DELETE FROM observations WHERE rowid IN (
+          SELECT MIN(rowid) FROM observations
+          GROUP BY title, type, substr(ts, 1, 19)
+          HAVING COUNT(*) > 1
+        );
+      `);
+    }
     exit0();
   } catch (err) {
     console.error('[mem-vault] sessionend hook error: ' + (err.message || err));

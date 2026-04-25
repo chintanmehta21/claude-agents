@@ -163,9 +163,15 @@ function renderRecent({ slug, rows }) {
 }
 
 function renderGitignore() {
-  return `# mem-vault project mirror.
-# README.md lists the slug + vault location — safe to commit for team visibility.
-# recent.md regenerates every session — usually noisy in diffs, so ignore it.
+  return `# mem-vault project store.
+# This folder may now contain the project's vault DB (vault.db) — that is private
+# per-developer state and MUST NOT be committed.  README.md is safe to commit so
+# teammates see the slug + how memory works.  recent.md regenerates every session.
+vault.db
+vault.db-wal
+vault.db-shm
+meta.json
+cache/
 recent.md
 
 # Uncomment the line below to ignore this whole folder:

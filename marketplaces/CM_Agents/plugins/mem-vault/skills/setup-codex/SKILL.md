@@ -41,8 +41,23 @@ After Codex restarts, run in Codex:
 ```
 and look for `mem-vault` in the server list.  Then call `stats` from Codex — if the `project_slug` matches the one Claude Code reports, they're sharing the same vault.
 
+## Per-project vault directory (auto)
+
+mem-vault now creates a `.mem-vault/` folder in each project root the first time
+it fires (CC SessionStart hook, PostToolUse hook, or any Codex MCP tool call).
+Codex doesn't run hooks, but its first MCP call will trigger creation just the
+same.  Codex resolves the project from `process.cwd()`, which is the directory
+where the user launched `codex` — so always launch Codex from the project root.
+TOML doesn't shell-expand, so we deliberately do **not** set `MEM_VAULT_CWD` in
+the env block; we let the server fall back to `process.cwd()`.
+
+If a global vault already exists at `~/.mem-vault/projects/<slug>/`, the very
+first ensure call in that project copies its `vault.db`, `vault.db-wal`,
+`vault.db-shm`, `meta.json`, and `cache/` into the new local `.mem-vault/` so
+no history is lost.
+
 ## Troubleshooting
 
 - **Codex doesn't find node** → set `command = "<full-path-to-node.exe>"` in the TOML block.
 - **Different project_slug on different clients** → clients launched from different CWDs.  Launch all three from the project root.
-- **Codex can't reach SQLite** → ensure `%USERPROFILE%\.mem-vault\` is writable.
+- **Codex can't reach SQLite** → ensure `%USERPROFILE%\.mem-vault\` is writable, or that the project's `.mem-vault/` is.

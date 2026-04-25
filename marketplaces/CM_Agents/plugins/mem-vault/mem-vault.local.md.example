@@ -1,26 +1,73 @@
 ---
-# mem-vault per-project configuration
-# Copy this file to .claude/mem-vault.local.md and edit as needed.
-# Not committed by default (covered by .gitignore pattern ".claude/*.local.md").
+# Copy this file to `.claude/mem-vault.local.md` in your project root and edit.
+# Do NOT commit (already covered by `.claude/*.local.md` in .gitignore patterns;
+# add that line to YOUR project's .gitignore as well).
+#
+# All keys are optional — anything you omit falls back to the documented default.
 
-# Override vault data directory (default: %USERPROFILE%\.mem-vault)
-# vault_dir: "D:/vaults/mem-vault"
+# Master kill switch. If false, all hooks no-op and the MCP server returns
+# `{ disabled: true }` for every tool call instead of querying the DB.
+enabled: true
 
-# Comma-separated list of tool names to NEVER capture (default captures Edit|Write|NotebookEdit|Bash|Task)
-# capture_excludes: TodoWrite,Glob,Grep
+# Auto-create a project-local `.mem-vault/` directory at the project root the
+# first time the plugin fires (SessionStart hook, PostToolUse hook, MCP tool
+# call from Codex, or CLI command).  The new directory holds this project's
+# vault.db + meta.json — one project = one folder, no shared global slug.
+#
+# If a pre-existing global vault is found at ~/.mem-vault/projects/<slug>/,
+# its data is transparently copied into the new local dir on first creation
+# (no data loss for existing setups).
+#
+# Set false to keep the legacy behavior (use ~/.mem-vault/projects/<slug>/ only
+# and never auto-create a project-local dir).
+auto_create_project_vault: true
 
-# Trim body text to N characters when capturing (default 2000)
-# max_body_chars: 2000
+# ---- Capture (PostToolUse hook) ----
 
-# Skip capturing bash commands matching any of these regexes (JSON array)
-# bash_ignore_patterns: ["^(ls|pwd|cd|echo)", "^git status"]
+# Disable just the auto-capture hook (sessions still start/end normally,
+# search/timeline still work on previously captured data).
+capture_enabled: true
 
-# Files whose edits should never be captured (secrets, build artifacts, etc.)
-# never_capture_paths: [".env*", "*.pem", "node_modules/**", "dist/**"]
+# Extra regex patterns of read-only Bash commands to skip on top of the
+# built-in filter (find/grep/git status/etc). Each entry is compiled with `new RegExp(...)`.
+capture_filter_extra: []
+
+# Truncate long observation bodies to this many characters.
+capture_max_body_chars: 4000
+
+# ---- Session start indexer (SessionStart hook) ----
+
+# Whether the SessionStart hook should emit the recent-context block at all.
+session_index_enabled: true
+
+# How many recent observations to surface in that block.
+session_index_limit: 12
+
+# ---- Session end consolidation (SessionEnd hook) ----
+
+# Run lightweight dedupe on session end. Default false — closing the session
+# row is always safe; this controls only the optional DELETE pass.
+consolidate_on_session_end: false
+
+# ---- Dashboard ----
+
+# Default port/host for `node server/index.js dashboard`.
+# Precedence: CLI flag (--port/--host) > env var (MEM_VAULT_DASHBOARD_PORT/HOST) > this setting > built-in default.
+dashboard_port: 37777
+dashboard_host: 127.0.0.1
+
+# Auto-open the system browser when the dashboard starts. `--no-open` always wins.
+dashboard_open_browser: true
+
+# ---- Logging ----
+
+# silent | info | debug — controls warnings/info written to stderr by the
+# settings loader and other components.
+log_verbosity: info
 ---
 
 # Project-scoped notes for mem-vault
 
-Free-form markdown below the frontmatter is ignored by the plugin but useful for
-human documentation of what this project's memory contains and any manual
+Free-form markdown below the frontmatter is ignored by the plugin but useful
+for human documentation of what this project's memory contains and any manual
 maintenance notes.
