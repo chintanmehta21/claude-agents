@@ -93,7 +93,7 @@ a:hover { text-decoration: underline; }
   outline: none;
 }
 
-.meta-right { display: flex; gap: 8px; }
+.meta-right { display: flex; gap: 8px; align-items: center; }
 .pill {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -103,6 +103,11 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
   font-family: var(--mono);
 }
+.live-pill { cursor: pointer; user-select: none; }
+.live-pill[data-status="refreshing"] { color: var(--accent); }
+.live-pill[data-status="error"] { color: #c46b6b; border-color: #5a3a3a; }
+.live-pill[data-status="paused"] { opacity: 0.6; }
+.p-time { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--fg-mute); margin-top: 2px; }
 
 /* ---- layout ---- */
 .layout {

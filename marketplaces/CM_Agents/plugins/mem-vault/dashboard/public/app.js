@@ -8,6 +8,9 @@ const state = {
   q: '',
   type: '',
   observations: [],
+  lastRefreshed: null,
+  refreshIntervalMs: 30_000, // poll every 30s — well within the 5-10 min freshness target
+  refreshing: false,
 };
 
 const $ = (s) => document.querySelector(s);
@@ -44,6 +47,7 @@ function escapeHtml(s) {
 // ---- projects ----
 async function loadProjects() {
   const { projects } = await api('/api/projects');
+  // Server returns projects already sorted by last_ts DESC; preserve that order.
   state.projects = projects;
   renderProjects();
   if (!state.current && projects.length) {
@@ -58,6 +62,7 @@ function renderProjects() {
       <div style="min-width:0; flex:1;">
         <div class="p-title" title="${escapeHtml(p.cwd || '')}">${escapeHtml(p.title)}</div>
         <span class="p-slug">${escapeHtml(p.slug)}</span>
+        <span class="p-time" title="last update">${p.last_ts ? relTime(p.last_ts) : ''}</span>
       </div>
       <span class="p-count">${p.observations}</span>
     </li>
@@ -65,6 +70,19 @@ function renderProjects() {
   el.querySelectorAll('li[data-slug]').forEach((li) => {
     li.addEventListener('click', () => selectProject(li.dataset.slug));
   });
+}
+
+function relTime(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms) || ms < 0) return '';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's ago';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  return d + 'd ago';
 }
 
 function selectProject(slug) {
@@ -206,7 +224,76 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ---- live refresh (poll every 30s; user can pause via the Live indicator) ----
+async function refreshAll({ silent = true } = {}) {
+  if (state.refreshing) return;
+  state.refreshing = true;
+  setLiveStatus('refreshing');
+  try {
+    // Remember current selection so we don't blow it away
+    const keepCurrent = state.current;
+    const { projects } = await api('/api/projects');
+    state.projects = projects;
+    renderProjects();
+    if (keepCurrent && projects.find((p) => p.slug === keepCurrent)) {
+      state.current = keepCurrent;
+    } else if (projects.length) {
+      state.current = projects[0].slug;
+    }
+    if (state.current) {
+      await Promise.all([loadObservations(), loadStats()]);
+    }
+    state.lastRefreshed = new Date();
+    setLiveStatus('live');
+  } catch (err) {
+    if (!silent) console.error('refresh failed', err);
+    setLiveStatus('error');
+  } finally {
+    state.refreshing = false;
+  }
+}
+
+function setLiveStatus(kind) {
+  const el = $('#live-status');
+  if (!el) return;
+  const ts = state.lastRefreshed ? state.lastRefreshed.toLocaleTimeString() : '—';
+  const dot = { live: '🟢', refreshing: '🟡', error: '🔴', paused: '⚪' }[kind] || '🟢';
+  el.textContent = `${dot} Live · last update ${ts}`;
+  el.dataset.status = kind;
+}
+
+let refreshTimer = null;
+function startLiveRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => refreshAll(), state.refreshIntervalMs);
+}
+function stopLiveRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+  setLiveStatus('paused');
+}
+
+// Pause polling when tab is hidden; resume + immediate refresh when visible.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopLiveRefresh();
+  } else {
+    refreshAll();
+    startLiveRefresh();
+  }
+});
+
+// Manual refresh on click of the live status indicator
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'live-status') refreshAll({ silent: false });
+});
+
 // ---- boot ----
-loadProjects().catch((err) => {
+loadProjects().then(() => {
+  state.lastRefreshed = new Date();
+  setLiveStatus('live');
+  startLiveRefresh();
+}).catch((err) => {
   $('#feed').innerHTML = '<div class="empty">Failed to load: ' + escapeHtml(err.message) + '</div>';
+  setLiveStatus('error');
 });
