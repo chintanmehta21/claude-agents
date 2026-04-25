@@ -46,6 +46,63 @@ function globalProjectDir(cwd) {
   return path.join(vaultRoot(), 'projects', projectSlug(cwd));
 }
 
+// Markers that indicate the root of a "project".  Order matters: the first
+// matching marker wins.  An existing `.mem-vault/` is the strongest signal
+// because it's an exact previous-run match — never walk past it.
+const PROJECT_MARKERS = [
+  '.mem-vault',
+  '.git',
+  'package.json',
+  'Cargo.toml',
+  'pyproject.toml',
+  'go.mod',
+  'pom.xml',
+  'AGENTS.md',
+  'CLAUDE.md',
+];
+
+const _findRootCache = new Map(); // key: resolved start dir → resolved project root
+
+/**
+ * Walk UP from `startCwd` looking for project markers.  Returns the first
+ * directory containing one of `PROJECT_MARKERS`.  Stops at the user's homedir
+ * (inclusive — if home itself has a marker we still accept it) and at the
+ * filesystem root.  Returns `startCwd` (resolved) unchanged if nothing matches.
+ *
+ * Cached per resolved start dir for the life of the process.
+ */
+function findProjectRoot(startCwd) {
+  const start = path.resolve(startCwd || process.cwd());
+  if (_findRootCache.has(start)) return _findRootCache.get(start);
+
+  const home = path.resolve(os.homedir());
+  let dir = start;
+  let safety = 64; // hard cap on walk depth
+
+  while (safety-- > 0) {
+    // Never treat the user's home as a "project" — even if it has a `.git`
+    // (some users init dotfile repos in $HOME) or a legacy global `.mem-vault/`.
+    // We stop the walk BEFORE inspecting markers at home so the fallback to
+    // `startCwd` kicks in instead.
+    if (dir === home) break;
+    for (const marker of PROJECT_MARKERS) {
+      try {
+        if (fs.existsSync(path.join(dir, marker))) {
+          _findRootCache.set(start, dir);
+          return dir;
+        }
+      } catch { /* ignore stat errors, keep walking */ }
+    }
+    const parent = path.dirname(dir);
+    if (!parent || parent === dir) break; // filesystem root
+    dir = parent;
+  }
+  _findRootCache.set(start, start);
+  return start;
+}
+
+function _resetFindRootCache() { _findRootCache.clear(); }
+
 /**
  * Directory for the project's vault (observations DB + metadata).
  *
@@ -58,7 +115,8 @@ function globalProjectDir(cwd) {
  */
 function projectDir(cwd) {
   if (process.env.MEM_VAULT_DATA_DIR) return globalProjectDir(cwd);
-  const local = path.join(path.resolve(cwd || process.cwd()), '.mem-vault');
+  const root = findProjectRoot(cwd || process.cwd());
+  const local = path.join(root, '.mem-vault');
   const localHasDb = fs.existsSync(path.join(local, 'vault.db'));
   if (localHasDb) return local;
   const global = globalProjectDir(cwd);
@@ -148,7 +206,8 @@ function ensureProjectVault(cwd, opts = {}) {
     try { settings = require('./settings').loadSettings(cwd); } catch { settings = {}; }
   }
 
-  const localDir = path.join(path.resolve(cwd || process.cwd()), '.mem-vault');
+  const root = findProjectRoot(cwd || process.cwd());
+  const localDir = path.join(root, '.mem-vault');
   const globalDir = globalProjectDir(cwd);
   const globalDb = path.join(globalDir, 'vault.db');
   const localExists = fs.existsSync(localDir);
@@ -215,7 +274,7 @@ function _writeMarkerFiles(localDir) {
 }
 
 /** Test helper — reset the per-cwd cache. */
-function _resetEnsureCache() { _ensureCache.clear(); }
+function _resetEnsureCache() { _ensureCache.clear(); _findRootCache.clear(); }
 
 /** List every project slug that has a vault on disk. */
 function listProjects() {
@@ -239,6 +298,9 @@ module.exports = {
   ensureDir,
   ensureProjectVault,
   _resetEnsureCache,
+  _resetFindRootCache,
+  findProjectRoot,
+  PROJECT_MARKERS,
   grammarsDir,
   listProjects,
 };

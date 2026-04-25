@@ -46,7 +46,17 @@ async function run() {
     ListPromptsRequestSchema,
   } = require('@modelcontextprotocol/sdk/types.js');
 
-  const cwd = process.env.MEM_VAULT_CWD || process.cwd();
+  // Initial cwd resolution at server startup (may be overridden per-request when
+  // a tool call carries a file path).  Resolution order:
+  //   1. explicit MEM_VAULT_CWD env override (test mode / power users)
+  //   2. project root walked up from process.cwd() — handles the common case
+  //      where Codex spawns the MCP child from the dir the user launched
+  //      `codex` in (project root or somewhere inside it).
+  //   3. raw process.cwd() last resort.
+  const startupCwd = process.env.MEM_VAULT_CWD
+    ? path.resolve(process.env.MEM_VAULT_CWD)
+    : paths.findProjectRoot(process.cwd());
+  let cwd = startupCwd;
   const client = detectClient();
 
   // Load settings once at server startup. The `enabled` kill switch makes every
@@ -56,21 +66,58 @@ async function run() {
   // Resolve / lazily create the per-project .mem-vault/ dir at startup.
   // Each tool/resource handler also calls ensureProjectVault (cached) so a
   // long-running MCP process picks up dir creation done after startup.
-  function ensureVault() {
+  function ensureVault(forCwd) {
     if (settings.enabled === false) return;
-    try { paths.ensureProjectVault(cwd, { settings }); } catch {}
+    try { paths.ensureProjectVault(forCwd || cwd, { settings }); } catch {}
   }
   ensureVault();
 
-  // Open DB + start session lazily on first tool call to keep startup fast and
-  // avoid crashing the MCP handshake if SQLite is momentarily locked.
-  let _db = null;
-  let _sessionId = null;
-  function getDb() {
-    if (_db) return _db;
-    _db = db.open(cwd);
-    _sessionId = db.startSession(_db, { client, cwd });
-    return _db;
+  // Open DB + start session lazily, cached per resolved project cwd.  This lets
+  // a single MCP server process serve multiple project vaults if the user
+  // touches files in different projects from the same Codex session.
+  const _dbByCwd = new Map(); // cwd → { db, sessionId }
+  function getDb(forCwd) {
+    const key = paths.normalizeCwd(forCwd || cwd);
+    let entry = _dbByCwd.get(key);
+    if (entry) return entry;
+    const opened = db.open(forCwd || cwd);
+    const sid = db.startSession(opened, { client, cwd: forCwd || cwd });
+    entry = { db: opened, sessionId: sid };
+    _dbByCwd.set(key, entry);
+    return entry;
+  }
+
+  /**
+   * Resolve the effective project cwd for an incoming tool call.  Inspect tool
+   * params for any file/path hint and walk up from there to a project root —
+   * this is the most reliable signal when the MCP child was spawned from a
+   * non-project directory (e.g. user's home).
+   */
+  function resolveCwdForCall(toolName, args) {
+    if (process.env.MEM_VAULT_CWD) return path.resolve(process.env.MEM_VAULT_CWD);
+    const hint = extractPathHint(args);
+    if (hint) {
+      try {
+        const abs = path.isAbsolute(hint) ? hint : path.resolve(cwd, hint);
+        const dir = fs.existsSync(abs) && fs.statSync(abs).isDirectory()
+          ? abs
+          : path.dirname(abs);
+        const root = paths.findProjectRoot(dir);
+        if (root) return root;
+      } catch { /* fall through */ }
+    }
+    return cwd;
+  }
+
+  function extractPathHint(args) {
+    if (!args || typeof args !== 'object') return null;
+    // Common shapes across our tool registry: file_path, file, files[].
+    if (typeof args.file_path === 'string' && args.file_path) return args.file_path;
+    if (typeof args.file === 'string' && args.file) return args.file;
+    if (Array.isArray(args.files) && args.files.length && typeof args.files[0] === 'string') {
+      return args.files[0];
+    }
+    return null;
   }
 
   const server = new Server(
@@ -95,9 +142,11 @@ async function run() {
     if (settings.enabled === false) {
       return { content: [{ type: 'text', text: JSON.stringify(DISABLED_RESULT, null, 2) }] };
     }
-    ensureVault();
+    const callCwd = resolveCwdForCall(name, args);
+    ensureVault(callCwd);
+    const { db: callDb, sessionId: callSid } = getDb(callCwd);
     try {
-      const result = await tool.handler(args, { db: getDb(), cwd, sessionId: _sessionId });
+      const result = await tool.handler(args, { db: callDb, cwd: callCwd, sessionId: callSid });
       return {
         content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }],
       };
@@ -139,8 +188,8 @@ async function run() {
     if (settings.enabled === false) {
       return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(DISABLED_RESULT, null, 2) }] };
     }
-    ensureVault();
-    const d = getDb();
+    ensureVault(cwd);
+    const d = getDb(cwd).db;
     if (uri === 'mem-vault://recent') {
       const rows = db.recentContext(d, { limit: 15 });
       const md = rows.length
@@ -167,8 +216,11 @@ async function run() {
   await server.connect(transport);
   // Graceful shutdown.
   const shutdown = () => {
-    try { if (_db && _sessionId) db.endSession(_db, _sessionId); } catch {}
-    try { if (_db) _db.close(); } catch {}
+    for (const entry of _dbByCwd.values()) {
+      try { db.endSession(entry.db, entry.sessionId); } catch {}
+      try { entry.db.close(); } catch {}
+    }
+    _dbByCwd.clear();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

@@ -43,13 +43,27 @@ and look for `mem-vault` in the server list.  Then call `stats` from Codex — i
 
 ## Per-project vault directory (auto)
 
-mem-vault now creates a `.mem-vault/` folder in each project root the first time
-it fires (CC SessionStart hook, PostToolUse hook, or any Codex MCP tool call).
-Codex doesn't run hooks, but its first MCP call will trigger creation just the
-same.  Codex resolves the project from `process.cwd()`, which is the directory
-where the user launched `codex` — so always launch Codex from the project root.
-TOML doesn't shell-expand, so we deliberately do **not** set `MEM_VAULT_CWD` in
-the env block; we let the server fall back to `process.cwd()`.
+On any tool call, mem-vault auto-creates `<project>/.mem-vault/` if absent,
+using the project root detected from your current working directory (or from
+any file path passed to the tool).  This matches the directory Claude Code
+would use for the same project — so CC and Codex share one vault per project.
+
+Detection walks UP from the relevant directory looking for any of:
+`.mem-vault/`, `.git/`, `package.json`, `Cargo.toml`, `pyproject.toml`,
+`go.mod`, `pom.xml`, `AGENTS.md`, `CLAUDE.md`.  It stops at your homedir or
+the filesystem root.  If none match, it falls back to the literal cwd.
+
+Per-request resolution order:
+1. `MEM_VAULT_CWD` env (if explicitly set)
+2. project root walked up from any file path in the tool params
+   (`file_path`, `file`, `files[0]`)
+3. project root walked up from the MCP server's startup `process.cwd()`
+4. raw `process.cwd()` (last resort)
+
+Codex doesn't run hooks, but its first MCP call triggers creation just the
+same.  TOML doesn't shell-expand, so we deliberately do **not** set
+`MEM_VAULT_CWD` or `cwd` in the config block — the walk-up detection covers
+the case where Codex spawns the MCP child from a non-project directory.
 
 If a global vault already exists at `~/.mem-vault/projects/<slug>/`, the very
 first ensure call in that project copies its `vault.db`, `vault.db-wal`,

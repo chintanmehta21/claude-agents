@@ -1,6 +1,6 @@
 # mem-vault — myagents-d459343863ee
 
-> Auto-generated on 2026-04-25T07:20:47.573Z.  Refreshed every session start.
+> Auto-generated on 2026-04-25T07:52:45.664Z.  Refreshed every session start.
 
 This folder is a **read-only mirror** of this project's entry in the mem-vault
 memory store.  Nothing in this folder is authoritative — the real database is
@@ -13,10 +13,10 @@ the SQLite file below.
 | Project root | `C:\Users\LENOVO\Documents\Claude_Code\MyAgents` |
 | Project slug | `myagents-d459343863ee` |
 | Vault DB | `C:\Users\LENOVO\Documents\Claude_Code\MyAgents\.mem-vault\vault.db` |
-| Observations | 89 |
-| Chapters | 0 |
-| Sessions | 11 |
-| Cached symbols | 0 |
+| Observations | 4 |
+| Chapters | 1 |
+| Sessions | 2 |
+| Cached symbols | 8 |
 
 ## Shared across
 
