@@ -38,6 +38,11 @@ const fs = require('fs');
     try { paths.ensureProjectVault(cwd, { settings }); } catch (e) {
       console.error('[mem-vault] ensureProjectVault failed: ' + (e.message || e));
     }
+    // Fire-and-forget: ensure the 24x7 dashboard daemon is up.
+    try {
+      const dd = require(path.join(pluginRoot, 'server', 'dashboard_daemon.js'));
+      dd.ensureDashboardRunningAsync({ cwd });
+    } catch (_) { /* never block session start */ }
     const sessionLimit = Number(settings.session_index_limit) || 12;
 
     const vaultDb = paths.vaultDbPath(cwd);

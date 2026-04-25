@@ -11,6 +11,12 @@ const { spawn } = require('node:child_process');
 const paths = require('../server/paths');
 const { loadSettings } = require('../server/settings');
 
+// Read package version (best-effort) for the health endpoint.
+let PKG_VERSION = '0.0.0';
+try { PKG_VERSION = require('../package.json').version || '0.0.0'; } catch {}
+const STARTED_AT = new Date().toISOString();
+const HEALTH_DEFAULT_ENDPOINT = '/__memvault_health';
+
 let Database;
 try {
   Database = require('better-sqlite3');
@@ -187,6 +193,18 @@ const server = http.createServer((req, res) => {
   }
   const u = url.parse(req.url, true);
   try {
+    // Health endpoint — used by ensureDashboardRunning to confirm the bound
+    // process is mem-vault's dashboard (and not some other tool on the same port).
+    if (u.pathname === HEALTH_DEFAULT_ENDPOINT || u.pathname === '/__memvault_health') {
+      return sendJson(res, 200, {
+        ok: true,
+        service: 'mem-vault-dashboard',
+        version: PKG_VERSION,
+        started_at: STARTED_AT,
+        pid: process.pid,
+        uptime_s: Math.round(process.uptime()),
+      });
+    }
     if (u.pathname === '/api/projects') {
       return sendJson(res, 200, { projects: listProjectsDetailed() });
     }
@@ -249,12 +267,40 @@ function tryOpenBrowser(target) {
   } catch (_) { /* best-effort */ }
 }
 
+function installShutdownHandlers() {
+  const cleanup = (sig) => {
+    try {
+      // Best-effort: remove the daemon PID file if this process owns it.
+      const os = require('node:os');
+      const pidPath = path.join(
+        process.env.MEM_VAULT_DATA_DIR
+          ? path.resolve(process.env.MEM_VAULT_DATA_DIR)
+          : path.join(os.homedir(), '.mem-vault'),
+        'dashboard.pid'
+      );
+      try {
+        const raw = fs.readFileSync(pidPath, 'utf8');
+        const obj = JSON.parse(raw);
+        if (obj && obj.pid === process.pid) fs.unlinkSync(pidPath);
+      } catch {}
+    } catch {}
+    try { server.close(() => process.exit(0)); } catch { process.exit(0); }
+    setTimeout(() => process.exit(0), 1500).unref();
+  };
+  process.on('SIGTERM', () => cleanup('SIGTERM'));
+  process.on('SIGINT', () => cleanup('SIGINT'));
+  if (process.platform === 'win32') {
+    try { process.on('SIGBREAK', () => cleanup('SIGBREAK')); } catch {}
+  }
+}
+
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const noOpen = args.includes('--no-open');
+  const noOpen = args.includes('--no-open') || args.includes('--daemon') || process.env.MEM_VAULT_DAEMON === '1';
   let port;
   const pi = args.indexOf('--port');
   if (pi >= 0 && args[pi + 1]) port = Number(args[pi + 1]);
+  installShutdownHandlers();
   start({ open: !noOpen, port });
 }
 

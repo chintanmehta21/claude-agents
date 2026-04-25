@@ -30,6 +30,11 @@ const path = require('path');
     const settings = settingsMod.loadSettings(cwd);
     if (settings.enabled === false) return exit0();
     try { paths.ensureProjectVault(cwd, { settings }); } catch {}
+    // Fire-and-forget dashboard daemon autostart (throttled internally).
+    try {
+      const dd = require(path.join(pluginRoot, 'server', 'dashboard_daemon.js'));
+      dd.ensureDashboardRunningAsync({ cwd });
+    } catch {}
 
     const obs = capture.fromToolUse(payload, { settings });
     if (!obs) return exit0();

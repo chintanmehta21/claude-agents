@@ -260,6 +260,8 @@ consolidate_on_session_end: false
 dashboard_port: 37777
 dashboard_host: 127.0.0.1
 dashboard_open_browser: true
+dashboard_autostart: true                 # 24x7 background dashboard daemon
+dashboard_health_endpoint: /__memvault_health
 log_verbosity: info            # silent | info | debug
 ---
 ```
@@ -278,6 +280,8 @@ log_verbosity: info            # silent | info | debug
 | `dashboard_port`               | `37777`       | `dashboard/server.js#resolvePort`    |
 | `dashboard_host`               | `127.0.0.1`   | `dashboard/server.js#resolveHost`    |
 | `dashboard_open_browser`       | `true`        | `server/cli.js` (dashboard subcmd)   |
+| `dashboard_autostart`          | `true`        | `server/dashboard_daemon.js` (autostart on hook/MCP/CLI) |
+| `dashboard_health_endpoint`    | `/__memvault_health` | `server/dashboard_daemon.js` health probe |
 | `log_verbosity`                | `info`        | `server/settings.js` (warnings)      |
 
 ### How to enable

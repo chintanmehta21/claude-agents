@@ -59,6 +59,19 @@ dashboard_host: 127.0.0.1
 # Auto-open the system browser when the dashboard starts. `--no-open` always wins.
 dashboard_open_browser: true
 
+# Auto-start the dashboard as a 24x7 detached background daemon the first time
+# ANY platform (Claude Code SessionStart hook, PostToolUse hook, MCP server
+# request from CC or Codex, or the CLI) touches the plugin. The daemon
+# outlives individual sessions, CC restarts, and Codex restarts. Set false to
+# opt out — you can still launch the dashboard manually with
+# `/mem-vault:dashboard` or `node server/index.js dashboard --foreground`.
+dashboard_autostart: true
+
+# Health endpoint exposed by the dashboard. Used by the autostart probe to
+# confirm the bound process is mem-vault's dashboard (and not some other tool
+# that happens to be on `dashboard_port`). Rarely needs to change.
+dashboard_health_endpoint: /__memvault_health
+
 # ---- Logging ----
 
 # silent | info | debug — controls warnings/info written to stderr by the

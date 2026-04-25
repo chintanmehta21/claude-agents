@@ -10,6 +10,7 @@ const parsers = require('./parsers');
 const paths = require('./paths');
 const mirror = require('./project_mirror');
 const { loadSettings } = require('./settings');
+const dashboardDaemon = require('./dashboard_daemon');
 
 const DISABLED_RESULT = {
   disabled: true,
@@ -71,6 +72,8 @@ async function run() {
     try { paths.ensureProjectVault(forCwd || cwd, { settings }); } catch {}
   }
   ensureVault();
+  // Kick the 24x7 dashboard daemon at MCP startup. Fire-and-forget.
+  try { dashboardDaemon.ensureDashboardRunningAsync({ cwd }); } catch {}
 
   // Open DB + start session lazily, cached per resolved project cwd.  This lets
   // a single MCP server process serve multiple project vaults if the user
@@ -144,6 +147,8 @@ async function run() {
     }
     const callCwd = resolveCwdForCall(name, args);
     ensureVault(callCwd);
+    // Idempotent + throttled — safe to call on every tool invocation.
+    try { dashboardDaemon.ensureDashboardRunningAsync({ cwd: callCwd }); } catch {}
     const { db: callDb, sessionId: callSid } = getDb(callCwd);
     try {
       const result = await tool.handler(args, { db: callDb, cwd: callCwd, sessionId: callSid });

@@ -40,6 +40,12 @@ const DEFAULTS = Object.freeze({
   dashboard_host: '127.0.0.1',
   dashboard_open_browser: true,
 
+  // 24x7 background dashboard daemon. When true (default), the first hook
+  // fire / MCP call / CLI invocation spawns a detached dashboard process that
+  // outlives any single CC, Codex, or CLI session. Set false to opt out.
+  dashboard_autostart: true,
+  dashboard_health_endpoint: '/__memvault_health',
+
   // Logging.
   log_verbosity: 'info', // silent | info | debug
 });

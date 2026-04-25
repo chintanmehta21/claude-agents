@@ -10,6 +10,7 @@ const paths = require('./paths');
 const capture = require('./capture');
 const mirror = require('./project_mirror');
 const settingsMod = require('./settings');
+const dashboardDaemon = require('./dashboard_daemon');
 
 const COMMANDS = {
   status,
@@ -42,6 +43,12 @@ async function run(argv) {
   }
   try {
     const args = parseArgs(rest);
+    // Fire-and-forget dashboard autostart on every CLI dispatch, except when
+    // the user is explicitly controlling the dashboard (dashboard subcommand
+    // handles spawn itself) or asking for help.
+    if (cmd && cmd !== 'help' && cmd !== '--help' && cmd !== '-h' && cmd !== 'dashboard') {
+      try { dashboardDaemon.ensureDashboardRunningAsync({ cwd: args.cwd ? path.resolve(args.cwd) : process.cwd() }); } catch {}
+    }
     // Resolve / lazily create the per-project .mem-vault/ before any command
     // touches the DB.  Idempotent + cached.  Honors enabled / auto_create_project_vault.
     if (cmd && cmd !== 'help' && cmd !== '--help' && cmd !== '-h' && cmd !== 'setup-codex' && cmd !== 'projects') {
@@ -283,24 +290,47 @@ env = { MEM_VAULT_ROOT = "${pluginRoot.replace(/\\/g, '\\\\')}", MEM_VAULT_CLIEN
 `;
 }
 
-/** Launch the local web dashboard. */
-function dashboard(args) {
-  const dash = require('../dashboard/server');
-  // Open-browser precedence: --no-open flag (false) > settings.dashboard_open_browser > true.
-  let open;
-  if (args['no-open']) {
-    open = false;
-  } else {
-    const s = settingsMod.loadSettings(process.env.MEM_VAULT_CWD || process.cwd());
-    open = s.dashboard_open_browser !== false;
+/** Control the local web dashboard daemon (24x7 background process). */
+async function dashboard(args) {
+  const sub = (args._ && args._[0]) || '';
+  // --foreground: run in current terminal (legacy / debugging).
+  if (args.foreground || sub === 'foreground') {
+    const dash = require('../dashboard/server');
+    let open;
+    if (args['no-open']) open = false;
+    else {
+      const s = settingsMod.loadSettings(process.env.MEM_VAULT_CWD || process.cwd());
+      open = s.dashboard_open_browser !== false;
+    }
+    dash.start({
+      open,
+      port: args.port ? Number(args.port) : undefined,
+      host: args.host || undefined,
+    });
+    return new Promise(() => {});
   }
-  dash.start({
-    open,
-    port: args.port ? Number(args.port) : undefined,
-    host: args.host || undefined,
-  });
-  // Keep the event loop alive — the http server holds it; just don't return.
-  return new Promise(() => {});
+
+  if (args.status || sub === 'status') {
+    const st = dashboardDaemon.getStatus();
+    return st;
+  }
+
+  if (args.stop || sub === 'stop') {
+    const r = await dashboardDaemon.stopDaemon();
+    return r;
+  }
+
+  if (args.restart || sub === 'restart') {
+    await dashboardDaemon.stopDaemon();
+    // Force a fresh check past the throttle.
+    const r = await dashboardDaemon.ensureDashboardRunning({ force: true });
+    return { restarted: true, ...r };
+  }
+
+  // Default: ensure running, return URL.
+  const r = await dashboardDaemon.ensureDashboardRunning({ force: true });
+  const port = r.port || (settingsMod.loadSettings(process.env.MEM_VAULT_CWD || process.cwd()).dashboard_port) || 37777;
+  return { ...r, url: `http://127.0.0.1:${port}/` };
 }
 
 function help() {
@@ -332,7 +362,11 @@ Admin:
   projects                               List all project vaults
   mirror [--limit 25]                    Refresh <project>/.mem-vault/ README + recent.md
   setup-codex                            Write Codex MCP config to ~/.codex/config.toml
-  dashboard [--port 37777] [--no-open]   Launch local web dashboard
+  dashboard                              Ensure 24x7 background dashboard is running, print URL
+  dashboard --status                     Show daemon PID, port, uptime, log path
+  dashboard --stop                       Stop the background dashboard daemon
+  dashboard --restart                    Restart the background dashboard daemon
+  dashboard --foreground [--port 37777]  Run dashboard in current terminal (debugging)
 `;
 }
 
