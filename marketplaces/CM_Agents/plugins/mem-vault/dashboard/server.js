@@ -43,30 +43,106 @@ function resolveHost(override) {
 }
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// Cache read-only DB handles by slug (cheap to keep open).
+// Cache read-only DB handles keyed by absolute vault.db path.  Keying by path
+// (not slug) means a project that migrates from global to local invalidates
+// naturally — the new path is a different cache key.
 const dbCache = new Map();
-function openProject(slug) {
-  if (dbCache.has(slug)) return dbCache.get(slug);
-  const dbPath = path.join(paths.vaultRoot(), 'projects', slug, 'vault.db');
+function openVaultAt(dbPath) {
+  if (!dbPath) return null;
+  if (dbCache.has(dbPath)) return dbCache.get(dbPath);
   if (!fs.existsSync(dbPath)) return null;
   try {
     const d = new Database(dbPath, { readonly: true, fileMustExist: true });
     d.pragma('busy_timeout = 2000');
-    dbCache.set(slug, d);
+    dbCache.set(dbPath, d);
     return d;
   } catch (e) {
     return null;
   }
 }
 
+/** Resolve the most authoritative vault.db path for a slug.
+ *  - Registry entry wins (canonical).
+ *  - Defensive: if BOTH the registered path AND the legacy global path exist
+ *    with non-zero size, prefer the one with the newer last_ts.
+ */
+function resolveVaultDb(entry) {
+  const registered = entry.vault_db || (entry.vault_dir ? path.join(entry.vault_dir, 'vault.db') : null);
+  const legacyGlobal = path.join(paths.vaultRoot(), 'projects', entry.slug, 'vault.db');
+  const regExists = registered && fs.existsSync(registered);
+  const legExists = legacyGlobal !== registered && fs.existsSync(legacyGlobal);
+  if (regExists && legExists) {
+    const ts = (p) => {
+      const d = openVaultAt(p);
+      try { const r = d.prepare('SELECT ts FROM observations ORDER BY ts DESC LIMIT 1').get(); return r ? r.ts : ''; }
+      catch { return ''; }
+    };
+    const rTs = ts(registered);
+    const lTs = ts(legacyGlobal);
+    if (lTs > rTs) {
+      try { process.stderr.write(`[mem-vault] divergence detected for ${entry.slug}: local=${rTs} global=${lTs}; using global\n`); } catch {}
+      return legacyGlobal;
+    }
+    if (rTs > lTs) {
+      try { process.stderr.write(`[mem-vault] divergence detected for ${entry.slug}: local=${rTs} global=${lTs}; using local\n`); } catch {}
+    }
+    return registered;
+  }
+  if (regExists) return registered;
+  if (legExists) return legacyGlobal;
+  return registered || legacyGlobal;
+}
+
+function _slugByMetaCwd(slug, dir) {
+  const metaPath = path.join(dir, 'meta.json');
+  try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return {}; }
+}
+
+/** Build the canonical project list:
+ *  1. Every registry entry (local or global).
+ *  2. Plus any global slug not yet in the registry (back-compat).
+ */
+function collectProjectEntries() {
+  const reg = paths.loadRegistry();
+  const bySlug = new Map();
+  for (const p of reg.projects) bySlug.set(p.slug, { ...p });
+
+  const globalRoot = path.join(paths.vaultRoot(), 'projects');
+  if (fs.existsSync(globalRoot)) {
+    for (const slug of fs.readdirSync(globalRoot)) {
+      if (bySlug.has(slug)) continue;
+      const gDir = path.join(globalRoot, slug);
+      if (!fs.existsSync(path.join(gDir, 'vault.db'))) continue;
+      const meta = _slugByMetaCwd(slug, gDir);
+      bySlug.set(slug, {
+        slug,
+        cwd: meta.cwd || null,
+        title: meta.cwd ? path.basename(meta.cwd) : slug,
+        vault_dir: gDir.replace(/\\/g, '/'),
+        vault_db: path.join(gDir, 'vault.db').replace(/\\/g, '/'),
+        created_at: meta.created_at || null,
+        last_seen: null,
+      });
+    }
+  }
+  return [...bySlug.values()];
+}
+
+/** Find a registry entry by slug — used by per-project endpoints. */
+function entryForSlug(slug) {
+  for (const e of collectProjectEntries()) if (e.slug === slug) return e;
+  return null;
+}
+
 function listProjectsDetailed() {
   const out = [];
-  for (const slug of paths.listProjects()) {
-    const metaPath = path.join(paths.vaultRoot(), 'projects', slug, 'meta.json');
+  for (const entry of collectProjectEntries()) {
+    const dbPath = resolveVaultDb(entry);
     let meta = {};
-    try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch (_) {}
+    if (entry.vault_dir) meta = _slugByMetaCwd(entry.slug, entry.vault_dir);
+    if (!meta.cwd && entry.cwd) meta.cwd = entry.cwd;
     let count = 0, lastTs = null;
-    const d = openProject(slug);
+    const d = openVaultAt(dbPath);
     if (d) {
       try {
         count = d.prepare('SELECT COUNT(*) AS n FROM observations').get().n;
@@ -75,16 +151,23 @@ function listProjectsDetailed() {
       } catch (_) {}
     }
     out.push({
-      slug,
-      cwd: meta.cwd || null,
-      title: meta.cwd ? path.basename(meta.cwd) : slug,
-      created_at: meta.created_at || null,
+      slug: entry.slug,
+      cwd: meta.cwd || entry.cwd || null,
+      title: entry.title || (meta.cwd ? path.basename(meta.cwd) : entry.slug),
+      created_at: meta.created_at || entry.created_at || null,
       observations: count,
       last_ts: lastTs,
+      meta: { vault_dir: entry.vault_dir || (dbPath ? path.dirname(dbPath) : null) },
     });
   }
   out.sort((a, b) => (b.last_ts || '').localeCompare(a.last_ts || ''));
   return out;
+}
+
+function openProject(slug) {
+  const entry = entryForSlug(slug);
+  if (!entry) return null;
+  return openVaultAt(resolveVaultDb(entry));
 }
 
 function sanitizeFts(query) {
@@ -238,6 +321,15 @@ const server = http.createServer((req, res) => {
 function start({ open = true, port, host } = {}) {
   const PORT = resolvePort(port);
   const HOST = resolveHost(host);
+  // Hydrate the project registry from the legacy global tree once at startup
+  // so projects predating the registry are visible immediately, and any
+  // diverged stale-global vaults are retired to `vault.db.legacy`.
+  try {
+    const r = paths.hydrateRegistry();
+    if (r && (r.added || r.retired)) {
+      process.stdout.write(`  registry hydrate: +${r.added} added, ${r.retired} retired\n`);
+    }
+  } catch {}
   server.listen(PORT, HOST, () => {
     const urlStr = `http://${HOST}:${PORT}/`;
     process.stdout.write(`mem-vault dashboard: ${urlStr}\n`);

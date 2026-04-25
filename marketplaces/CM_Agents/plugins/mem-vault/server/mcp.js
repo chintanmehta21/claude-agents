@@ -72,6 +72,9 @@ async function run() {
     try { paths.ensureProjectVault(forCwd || cwd, { settings }); } catch {}
   }
   ensureVault();
+  // Hydrate the project registry from the legacy global tree once at startup
+  // (back-compat for vaults predating the registry; also retires stale globals).
+  try { paths.hydrateRegistry(); } catch {}
   // Kick the 24x7 dashboard daemon at MCP startup. Fire-and-forget.
   try { dashboardDaemon.ensureDashboardRunningAsync({ cwd }); } catch {}
 

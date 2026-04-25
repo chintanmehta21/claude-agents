@@ -227,6 +227,7 @@ function ensureProjectVault(cwd, opts = {}) {
     else if (localExists) chosen = localDir;
     else chosen = globalDir; // legacy fallback path; db.open will mkdir under it
     _ensureCache.set(norm, chosen);
+    try { upsertProject({ cwd, vaultDir: chosen }); } catch {}
     return chosen;
   }
 
@@ -253,6 +254,9 @@ function ensureProjectVault(cwd, opts = {}) {
   }
 
   _ensureCache.set(norm, localDir);
+  // Upsert into the project registry so the dashboard / other clients can
+  // discover this vault even though it lives outside ~/.mem-vault/projects/.
+  try { upsertProject({ cwd, vaultDir: localDir }); } catch {}
   return localDir;
 }
 
@@ -286,6 +290,253 @@ function listProjects() {
   });
 }
 
+// ----------------- Project registry -----------------
+//
+// `~/.mem-vault/registry.json` is a single canonical index of every project
+// vault the plugin knows about (local OR global).  The dashboard, MCP server,
+// and CLI all read & write through this so newly-migrated project-local vaults
+// are visible everywhere instead of being shadowed by a stale global vault.
+
+function registryPath() {
+  return path.join(vaultRoot(), 'registry.json');
+}
+
+function _registryLockPath() {
+  return path.join(vaultRoot(), 'registry.lock');
+}
+
+function _emptyRegistry() {
+  return { version: 1, projects: [] };
+}
+
+function loadRegistry() {
+  const p = registryPath();
+  if (!fs.existsSync(p)) return _emptyRegistry();
+  try {
+    const obj = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!obj || typeof obj !== 'object') return _emptyRegistry();
+    if (!Array.isArray(obj.projects)) obj.projects = [];
+    if (!obj.version) obj.version = 1;
+    return obj;
+  } catch {
+    return _emptyRegistry();
+  }
+}
+
+function _acquireRegistryLock() {
+  const lock = _registryLockPath();
+  ensureDir(path.dirname(lock));
+  const STALE_MS = 5000;
+  const start = Date.now();
+  while (Date.now() - start < 6000) {
+    try {
+      const fd = fs.openSync(lock, 'wx');
+      try { fs.writeSync(fd, String(process.pid)); } catch {}
+      fs.closeSync(fd);
+      return lock;
+    } catch (err) {
+      // Steal stale lock.
+      try {
+        const st = fs.statSync(lock);
+        if (Date.now() - st.mtimeMs > STALE_MS) {
+          try { fs.unlinkSync(lock); } catch {}
+          continue;
+        }
+      } catch {}
+      // Brief spin
+      const until = Date.now() + 50;
+      while (Date.now() < until) { /* busy wait */ }
+    }
+  }
+  return null; // give up; write best-effort without lock
+}
+
+function _releaseRegistryLock(lock) {
+  if (!lock) return;
+  try { fs.unlinkSync(lock); } catch {}
+}
+
+function saveRegistry(reg) {
+  const p = registryPath();
+  ensureDir(path.dirname(p));
+  const tmp = p + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(reg, null, 2), 'utf8');
+  fs.renameSync(tmp, p);
+}
+
+/**
+ * Upsert a project entry into the registry.  Updates `vault_dir`, `vault_db`,
+ * `cwd`, and `last_seen`.  Preserves `created_at` if already present.
+ */
+function upsertProject({ cwd, vaultDir, title }) {
+  if (process.env.MEM_VAULT_DATA_DIR) return; // test mode: stay isolated
+  let lock = null;
+  try {
+    lock = _acquireRegistryLock();
+    const reg = loadRegistry();
+    const slug = projectSlug(cwd);
+    const norm = normalizeCwd(cwd);
+    const dir = vaultDir || projectDir(cwd);
+    const dbPath = path.join(dir, 'vault.db');
+    const now = new Date().toISOString();
+    const existing = reg.projects.find((p) => p.slug === slug);
+    if (existing) {
+      existing.cwd = norm;
+      existing.vault_dir = dir.replace(/\\/g, '/');
+      existing.vault_db = dbPath.replace(/\\/g, '/');
+      existing.last_seen = now;
+      if (title) existing.title = title;
+      if (!existing.created_at) existing.created_at = now;
+    } else {
+      reg.projects.push({
+        slug,
+        cwd: norm,
+        title: title || path.basename(norm),
+        vault_dir: dir.replace(/\\/g, '/'),
+        vault_db: dbPath.replace(/\\/g, '/'),
+        last_seen: now,
+        created_at: now,
+      });
+    }
+    saveRegistry(reg);
+  } catch (_) {
+    /* never block callers on registry write failure */
+  } finally {
+    _releaseRegistryLock(lock);
+  }
+}
+
+/**
+ * Hydrate the registry with any global project slugs not yet listed
+ * (back-compat for setups that predate the registry).  Also performs
+ * stale-global retirement: when a slug has BOTH a local vault and a
+ * global vault and the local is materially newer (>60s), the global
+ * `vault.db` is renamed to `vault.db.legacy` and the registry points
+ * at the local.
+ *
+ * Cheap and idempotent — safe to call on every server start.
+ */
+function hydrateRegistry(opts = {}) {
+  if (process.env.MEM_VAULT_DATA_DIR) return { added: 0, retired: 0 };
+  const log = opts.log === false ? () => {} : (msg) => {
+    try { process.stderr.write(msg + '\n'); } catch {}
+  };
+  let lock = null;
+  let added = 0;
+  let retired = 0;
+  let DatabaseCtor;
+  try { DatabaseCtor = require('better-sqlite3'); } catch { DatabaseCtor = null; }
+
+  function readLastTs(dbPath) {
+    if (!DatabaseCtor || !fs.existsSync(dbPath)) return null;
+    let d;
+    try {
+      d = new DatabaseCtor(dbPath, { readonly: true, fileMustExist: true });
+      d.pragma('busy_timeout = 1500');
+      const r = d.prepare('SELECT ts FROM observations ORDER BY ts DESC LIMIT 1').get();
+      return r ? r.ts : null;
+    } catch { return null; }
+    finally { try { d && d.close(); } catch {} }
+  }
+
+  try {
+    lock = _acquireRegistryLock();
+    const reg = loadRegistry();
+    const bySlug = new Map(reg.projects.map((p) => [p.slug, p]));
+    const globalRoot = path.join(vaultRoot(), 'projects');
+
+    if (fs.existsSync(globalRoot)) {
+      for (const slug of fs.readdirSync(globalRoot)) {
+        const gDir = path.join(globalRoot, slug);
+        const gDb = path.join(gDir, 'vault.db');
+        const gMeta = path.join(gDir, 'meta.json');
+        let meta = {};
+        try { meta = JSON.parse(fs.readFileSync(gMeta, 'utf8')); } catch {}
+
+        const cwdHint = meta.cwd || null;
+        const titleHint = cwdHint ? path.basename(cwdHint) : slug;
+
+        // Determine the local dir for this project (if cwd is known + still exists).
+        let localDir = null, localDb = null, localExists = false;
+        if (cwdHint && fs.existsSync(cwdHint)) {
+          try {
+            const root = findProjectRoot(cwdHint);
+            localDir = path.join(root, '.mem-vault');
+            localDb = path.join(localDir, 'vault.db');
+            localExists = fs.existsSync(localDb);
+          } catch {}
+        }
+
+        const globalExists = fs.existsSync(gDb);
+
+        // Divergence: both local + global exist; pick the newer.
+        let chosenDir = gDir;
+        if (localExists && globalExists) {
+          const lTs = readLastTs(localDb);
+          const gTs = readLastTs(gDb);
+          const lMs = lTs ? Date.parse(lTs) : 0;
+          const gMs = gTs ? Date.parse(gTs) : 0;
+          if (lMs && gMs && lMs - gMs > 60_000) {
+            // Retire the stale global.
+            const legacy = gDb + '.legacy';
+            try {
+              if (!fs.existsSync(legacy)) {
+                fs.renameSync(gDb, legacy);
+                // Also retire the wal/shm so SQLite doesn't get confused.
+                for (const ext of ['-wal', '-shm']) {
+                  const f = gDb + ext;
+                  if (fs.existsSync(f)) {
+                    try { fs.renameSync(f, legacy + ext); } catch {}
+                  }
+                }
+                const deltaMs = lMs - gMs;
+                log(`[mem-vault] retired stale global vault for ${slug} (local is ${Math.round(deltaMs/1000)}s newer) -> ${legacy.replace(/\\/g,'/')}`);
+                retired++;
+              }
+            } catch (e) {
+              log(`[mem-vault] failed to retire stale global for ${slug}: ${e.message || e}`);
+            }
+            chosenDir = localDir;
+          } else if (lMs >= gMs) {
+            chosenDir = localDir;
+          } else {
+            log(`[mem-vault] divergence detected for ${slug}: local=${lTs} global=${gTs}; using global`);
+          }
+        } else if (localExists) {
+          chosenDir = localDir;
+        }
+
+        const entry = bySlug.get(slug);
+        const dbPath = path.join(chosenDir, 'vault.db');
+        if (!entry) {
+          reg.projects.push({
+            slug,
+            cwd: cwdHint ? normalizeCwd(cwdHint) : null,
+            title: titleHint,
+            vault_dir: chosenDir.replace(/\\/g, '/'),
+            vault_db: dbPath.replace(/\\/g, '/'),
+            last_seen: meta.created_at || new Date().toISOString(),
+            created_at: meta.created_at || new Date().toISOString(),
+          });
+          added++;
+        } else {
+          // Reflect retirement / divergence resolution into existing entry.
+          entry.vault_dir = chosenDir.replace(/\\/g, '/');
+          entry.vault_db = dbPath.replace(/\\/g, '/');
+          if (!entry.cwd && cwdHint) entry.cwd = normalizeCwd(cwdHint);
+          if (!entry.title) entry.title = titleHint;
+        }
+      }
+    }
+    saveRegistry(reg);
+  } catch (_) {
+    /* best-effort */
+  } finally {
+    _releaseRegistryLock(lock);
+  }
+  return { added, retired };
+}
+
 module.exports = {
   pluginRoot,
   vaultRoot,
@@ -303,4 +554,9 @@ module.exports = {
   PROJECT_MARKERS,
   grammarsDir,
   listProjects,
+  registryPath,
+  loadRegistry,
+  saveRegistry,
+  upsertProject,
+  hydrateRegistry,
 };

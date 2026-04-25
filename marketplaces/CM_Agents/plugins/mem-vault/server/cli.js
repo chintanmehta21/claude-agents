@@ -245,7 +245,12 @@ function cliMirror(args) {
   return mirror.refresh(cwd, { limit: Number(args.limit) || 25 });
 }
 
-function listProjects() {
+function listProjects(args) {
+  if (args && args.registry) {
+    // Print the canonical project registry (debug aid).
+    paths.hydrateRegistry();
+    return paths.loadRegistry();
+  }
   return paths.listProjects().map((slug) => {
     const metaPath = path.join(paths.vaultRoot(), 'projects', slug, 'meta.json');
     try { return { slug, ...JSON.parse(fs.readFileSync(metaPath, 'utf8')) }; }
@@ -359,7 +364,7 @@ Hooks (stdin JSON):
   save-obs-from-stdin                    Read hook payload on stdin, capture if relevant
 
 Admin:
-  projects                               List all project vaults
+  projects [--registry]                  List all project vaults (or print registry.json)
   mirror [--limit 25]                    Refresh <project>/.mem-vault/ README + recent.md
   setup-codex                            Write Codex MCP config to ~/.codex/config.toml
   dashboard                              Ensure 24x7 background dashboard is running, print URL
