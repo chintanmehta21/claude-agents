@@ -1,6 +1,6 @@
 # mem-vault — mem-vault-93981b2588f4
 
-> Auto-generated on 2026-04-25T06:56:17.010Z.  Refreshed every session start.
+> Auto-generated on 2026-04-25T07:20:48.140Z.  Refreshed every session start.
 
 This folder is a **read-only mirror** of this project's entry in the mem-vault
 memory store.  Nothing in this folder is authoritative — the real database is
@@ -12,10 +12,10 @@ the SQLite file below.
 |---|---|
 | Project root | `C:\Users\LENOVO\Documents\Claude_Code\MyAgents\marketplaces\CM_Agents\plugins\mem-vault` |
 | Project slug | `mem-vault-93981b2588f4` |
-| Vault DB | `C:\Users\LENOVO\.mem-vault\projects\mem-vault-93981b2588f4\vault.db` |
-| Observations | 4 |
+| Vault DB | `C:\Users\LENOVO\Documents\Claude_Code\MyAgents\marketplaces\CM_Agents\plugins\mem-vault\.mem-vault\vault.db` |
+| Observations | 5 |
 | Chapters | 1 |
-| Sessions | 2 |
+| Sessions | 3 |
 | Cached symbols | 0 |
 
 ## Shared across
