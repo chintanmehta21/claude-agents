@@ -43,6 +43,24 @@ session_index_enabled: true
 # How many recent observations to surface in that block.
 session_index_limit: 12
 
+# ---- Prefetch hooks (forces the agent to consult mem-vault) ----
+
+# UserPromptSubmit hook — at every turn, auto-search the vault for the user's
+# prompt and inject any matching prior observations as additionalContext so
+# the agent sees them BEFORE deciding to Grep/Read. This is the main lever
+# that stops the agent from re-deriving things it already learned.
+prefetch_on_user_prompt: true
+
+# PreToolUse hook — before Grep/Read/Glob/Bash, surface any prior memory that
+# matches what the agent is about to search for. HINT only; never blocks.
+pretool_hint: true
+
+# Cap on number of vault hits injected by either prefetch hook.
+prefetch_max_results: 5
+
+# FTS5 score threshold; 0 = include every match.
+prefetch_min_score: 0
+
 # ---- Session end consolidation (SessionEnd hook) ----
 
 # Run lightweight dedupe on session end. Default false — closing the session

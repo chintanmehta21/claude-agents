@@ -436,6 +436,40 @@ function tools() {
     },
 
     {
+      name: 'recall_for_query',
+      description:
+        'PROACTIVE USE — CALL FIRST EVERY TURN: Given the user\'s prompt (or any query string), ' +
+        'returns prior decisions/bugfixes/features/discoveries from this project\'s vault that may answer the question without grep. ' +
+        'Returns a compact, ranked list plus the most recent activity. Cheap, always safe to call. ' +
+        'Codex agents: call this at the start of every turn before any other action.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'The user\'s message (or any free-text query).' },
+          limit: { type: 'integer', default: 5, minimum: 1, maximum: 20 },
+        },
+        required: ['prompt'],
+      },
+      handler: (args, ctx) => {
+        const prefetch = require('./prefetch');
+        const settings = loadSettings(ctx.cwd);
+        const r = prefetch.runPrefetch({
+          cwd: ctx.cwd,
+          prompt: args.prompt,
+          limit: Number(args.limit) || Number(settings.prefetch_max_results) || 5,
+          recent: true,
+          settings,
+        });
+        return {
+          query: r.query,
+          hint: prefetch.formatHint({ results: r.results, recent: r.recent, query: r.query, mode: 'prompt' }),
+          results: r.results,
+          recent: r.recent,
+        };
+      },
+    },
+
+    {
       name: 'mirror_project',
       description:
         'Refresh the <project>/.mem-vault/ folder with README.md + recent.md — a human-readable ' +

@@ -256,6 +256,10 @@ capture_filter_extra: []       # extra regex patterns of read-only Bash to skip
 capture_max_body_chars: 4000   # truncate long observation bodies
 session_index_enabled: true    # SessionStart hook on/off
 session_index_limit: 12        # how many recent items to surface
+prefetch_on_user_prompt: true  # UserPromptSubmit hook: auto-search vault per turn
+pretool_hint: true             # PreToolUse hook: hint memory before Grep/Read/Bash/Glob
+prefetch_max_results: 5        # cap on hits injected by prefetch hooks
+prefetch_min_score: 0          # FTS5 score floor (0 = include everything)
 consolidate_on_session_end: false
 dashboard_port: 37777
 dashboard_host: 127.0.0.1
@@ -276,6 +280,10 @@ log_verbosity: info            # silent | info | debug
 | `capture_max_body_chars`       | `4000`        | `server/capture.js` (body truncate)  |
 | `session_index_enabled`        | `true`        | `hooks/sessionstart-index.js`        |
 | `session_index_limit`          | `12`          | `hooks/sessionstart-index.js`        |
+| `prefetch_on_user_prompt`      | `true`        | `hooks/userpromptsubmit-prefetch.js` |
+| `pretool_hint`                 | `true`        | `hooks/pretooluse-hint.js`           |
+| `prefetch_max_results`         | `5`           | both prefetch hooks + `recall_for_query` MCP tool |
+| `prefetch_min_score`           | `0`           | both prefetch hooks (FTS5 score floor) |
 | `consolidate_on_session_end`   | `false`       | `hooks/sessionend-consolidate.js`    |
 | `dashboard_port`               | `37777`       | `dashboard/server.js#resolvePort`    |
 | `dashboard_host`               | `127.0.0.1`   | `dashboard/server.js#resolveHost`    |

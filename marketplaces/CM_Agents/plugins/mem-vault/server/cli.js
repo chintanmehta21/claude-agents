@@ -28,6 +28,8 @@ const COMMANDS = {
   mirror: cliMirror,
   'setup-codex': setupCodex,
   dashboard: dashboard,
+  prefetch: cliPrefetch,
+  doctor: cliDoctor,
   help: help,
   '--help': help,
   '-h': help,
@@ -338,6 +340,111 @@ async function dashboard(args) {
   return { ...r, url: `http://127.0.0.1:${port}/` };
 }
 
+/**
+ * `prefetch --prompt "<text>" [--json]` — same logic as the
+ * UserPromptSubmit hook, callable from the terminal for testing/debugging.
+ */
+function cliPrefetch(args) {
+  const cwd = cwdFromArgs(args);
+  const prefetch = require('./prefetch');
+  const settings = settingsMod.loadSettings(cwd);
+  const limit = Number(args.limit) || Number(settings.prefetch_max_results) || 5;
+  const prompt = args.prompt || args.q || args._[0] || '';
+  const result = prefetch.runPrefetch({ cwd, prompt, limit, recent: true, settings });
+  if (args.json || args.format === 'json') {
+    return result;
+  }
+  const hint = prefetch.formatHint({
+    results: result.results,
+    recent: result.recent,
+    query: result.query,
+    mode: 'prompt',
+  });
+  return (hint || '(no matches)') + '\n';
+}
+
+/** `doctor` — diagnostics for the user. */
+function cliDoctor(args) {
+  const cwd = cwdFromArgs(args);
+  const root = paths.pluginRoot();
+  const fsx = require('fs');
+  const cp = require('child_process');
+  const hookLog = require('./hook_log');
+
+  const hooksJsonPath = path.join(root, 'hooks', 'hooks.json');
+  let hooksJson = null;
+  try { hooksJson = JSON.parse(fsx.readFileSync(hooksJsonPath, 'utf8')); } catch (e) { hooksJson = { error: e.message }; }
+
+  const hookFiles = [
+    'sessionstart-index.js',
+    'userpromptsubmit-prefetch.js',
+    'pretooluse-hint.js',
+    'posttooluse-capture.js',
+    'sessionend-consolidate.js',
+  ];
+  const hookChecks = hookFiles.map((f) => {
+    const p = path.join(root, 'hooks', f);
+    const exists = fsx.existsSync(p);
+    let nodeOk = false, nodeErr = null;
+    if (exists) {
+      try {
+        cp.execFileSync(process.execPath, ['--check', p], { stdio: 'pipe' });
+        nodeOk = true;
+      } catch (e) { nodeErr = String(e.stderr || e.message || e).slice(0, 240); }
+    }
+    return { file: f, exists, node_check: nodeOk, error: nodeErr };
+  });
+
+  const events = (hooksJson && hooksJson.hooks) ? Object.keys(hooksJson.hooks) : [];
+  const requiredEvents = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'SessionEnd'];
+  const missingEvents = requiredEvents.filter((e) => !events.includes(e));
+
+  let dashStatus = null;
+  try { dashStatus = dashboardDaemon.getStatus(); } catch (e) { dashStatus = { error: e.message }; }
+
+  let registry = { projects: [] };
+  try { registry = paths.loadRegistry(); } catch {}
+
+  let vault = null;
+  try {
+    const vDir = paths.projectDir(cwd);
+    const vDb = paths.vaultDbPath(cwd);
+    let counts = null;
+    if (fsx.existsSync(vDb)) {
+      const d = db.open(cwd);
+      counts = db.stats(d);
+      try {
+        const decisions = d.prepare("SELECT COUNT(*) AS n FROM observations WHERE type='decision'").get().n;
+        const bugfixes = d.prepare("SELECT COUNT(*) AS n FROM observations WHERE type='bugfix'").get().n;
+        counts.decisions = decisions;
+        counts.bugfixes = bugfixes;
+      } catch {}
+    }
+    vault = { cwd, dir: vDir, db: vDb, exists: fsx.existsSync(vDb), counts };
+  } catch (e) { vault = { error: e.message }; }
+
+  const lastFires = hookLog.tail(5);
+
+  const ok =
+    missingEvents.length === 0 &&
+    hookChecks.every((h) => h.exists && h.node_check) &&
+    !!vault && !vault.error;
+
+  return {
+    ok,
+    plugin_root: root,
+    hooks_json: hooksJsonPath,
+    registered_events: events,
+    missing_events: missingEvents,
+    hook_scripts: hookChecks,
+    dashboard: dashStatus,
+    registry_projects: (registry.projects || []).length,
+    current_vault: vault,
+    last_hook_fires: lastFires,
+    hook_log_path: hookLog.logPath(),
+  };
+}
+
 function help() {
   return `mem-vault — persistent memory vault CLI
 
@@ -372,6 +479,10 @@ Admin:
   dashboard --stop                       Stop the background dashboard daemon
   dashboard --restart                    Restart the background dashboard daemon
   dashboard --foreground [--port 37777]  Run dashboard in current terminal (debugging)
+
+Diagnostics:
+  prefetch --prompt "<text>" [--json]    Same logic as the UserPromptSubmit hook
+  doctor                                 Verify hooks, dashboard, vault, registry
 `;
 }
 

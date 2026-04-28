@@ -32,6 +32,18 @@ const DEFAULTS = Object.freeze({
   session_index_enabled: true,
   session_index_limit: 12,
 
+  // UserPromptSubmit prefetch hook — auto-search the vault for the user's
+  // prompt at every turn and inject hits as additionalContext. This is what
+  // forces the agent to consult mem-vault BEFORE Grep/Read.
+  prefetch_on_user_prompt: true,
+  // PreToolUse hint hook — surface relevant memory before Grep/Bash/Read/Glob.
+  // Hints only (never blocks the tool call).
+  pretool_hint: true,
+  // Cap on results injected by either prefetch hook.
+  prefetch_max_results: 5,
+  // FTS5 score threshold; 0 = include everything that matches.
+  prefetch_min_score: 0,
+
   // SessionEnd consolidation.
   consolidate_on_session_end: false,
 

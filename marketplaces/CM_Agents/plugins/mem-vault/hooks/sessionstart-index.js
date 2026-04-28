@@ -56,7 +56,7 @@ const fs = require('fs');
 
     const d = db.open(cwd);
     db.startSession(d, { client: payload.source || 'claude-code', cwd });
-    const rows = db.recentContext(d, { limit: sessionLimit });
+    const rows = highSignalRecent(db, d, { limit: sessionLimit });
 
     // Refresh the project-root .mem-vault/ mirror (README + recent.md).  Best-effort.
     try {
@@ -71,7 +71,9 @@ const fs = require('fs');
       return;
     }
 
-    const header = `# [mem-vault] ${paths.projectSlug(cwd)} — recent context (${rows.length} items)\n`;
+    const header =
+      `# [mem-vault] ${paths.projectSlug(cwd)} — recent context (${rows.length} items)\n` +
+      `[mem-vault] Always call \`search\` BEFORE Grep/Read for any question about this codebase. The ${rows.length} items below are HIGH-SIGNAL prior decisions and recent activity:\n`;
     const body = rows.map(fmt).join('\n');
     const guidance = `
 
@@ -99,6 +101,41 @@ Treat mem-vault as your first line of context retrieval, not a last resort.
     process.exit(0); // never block session start
   }
 })();
+
+/**
+ * Pull high-signal observations: top (limit-4) from
+ * decision|bugfix|feature|discovery|refactor in the last 14 days, then top 4
+ * most-recent of any type. De-duped, ordered most-recent first.
+ */
+function highSignalRecent(db, d, { limit = 12 } = {}) {
+  const HIGH = ['decision', 'bugfix', 'feature', 'discovery', 'refactor'];
+  const RECENT_TAIL = Math.min(4, Math.max(1, Math.floor(limit / 3)));
+  const HIGH_LIMIT = Math.max(1, limit - RECENT_TAIL);
+  const sinceISO = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const seen = new Set();
+  const merged = [];
+
+  for (const t of HIGH) {
+    let rows = [];
+    try { rows = db.timeline(d, { limit: HIGH_LIMIT, since: sinceISO, type: t }); } catch {}
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      merged.push(r);
+    }
+  }
+  // Most-recent any-type tail.
+  let tail = [];
+  try { tail = db.recentContext(d, { limit: RECENT_TAIL * 3 }); } catch {}
+  for (const r of tail) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    merged.push(r);
+  }
+  // Sort by timestamp desc, slice to limit.
+  merged.sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
+  return merged.slice(0, limit);
+}
 
 function fmt(r) {
   const files = (r.files && r.files.length) ? ` [${r.files.slice(0, 2).join(', ')}]` : '';
