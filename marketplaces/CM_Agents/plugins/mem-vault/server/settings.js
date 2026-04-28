@@ -58,6 +58,17 @@ const DEFAULTS = Object.freeze({
   dashboard_autostart: true,
   dashboard_health_endpoint: '/__memvault_health',
 
+  // Auto-promotion of captures into high-signal observations.
+  auto_promote: true,
+  auto_promote_min_confidence: 0.6,
+
+  // Periodic consolidator (groups noisy captures into summary observations).
+  consolidator_interval_min: 30,
+  consolidator_window_hours: 24,
+
+  // Debug toggle: when true, doctor includes recent prompts and extracted terms.
+  query_extract_debug: false,
+
   // Logging.
   log_verbosity: 'info', // silent | info | debug
 });
@@ -95,7 +106,7 @@ function loadSettings(cwd) {
     const def = DEFAULTS[key];
     try {
       if (typeof def === 'boolean') merged[key] = toBool(v, def);
-      else if (typeof def === 'number') merged[key] = toInt(v, def);
+      else if (typeof def === 'number') merged[key] = Number.isInteger(def) ? toInt(v, def) : toFloat(v, def);
       else if (Array.isArray(def)) merged[key] = toStringList(v, def);
       else if (key === 'log_verbosity') {
         const s = String(v).trim().toLowerCase();
@@ -128,6 +139,10 @@ function toBool(v, def) {
 function toInt(v, def) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : def;
+}
+function toFloat(v, def) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
 }
 function toStringList(v, def) {
   if (Array.isArray(v)) return v.map((x) => String(x));

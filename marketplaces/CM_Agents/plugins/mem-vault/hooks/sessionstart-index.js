@@ -73,7 +73,16 @@ const fs = require('fs');
 
     const header =
       `# [mem-vault] ${paths.projectSlug(cwd)} — recent context (${rows.length} items)\n` +
-      `[mem-vault] Always call \`search\` BEFORE Grep/Read for any question about this codebase. The ${rows.length} items below are HIGH-SIGNAL prior decisions and recent activity:\n`;
+      `\n## DEFAULT TOOL ORDER (NON-NEGOTIABLE)\n` +
+      `For any question about THIS codebase — what something does, where a function lives, why a decision was made, what changed recently, how a file is structured — use mem-vault tools FIRST. Grep/Read/Glob are FALLBACKS, used only after mem-vault returns insufficient results.\n\n` +
+      `1. **\`mcp__plugin_mem-vault_mem-vault__search\`** ← default for "where/why/what/how" questions. Searches all prior decisions, bugfixes, features, captures, and edits across this project's history.\n` +
+      `2. **\`mcp__plugin_mem-vault_mem-vault__smart_search\`** ← default for finding a function/class/method/symbol by name. Uses tree-sitter, language-aware. Replaces Grep for symbol lookups.\n` +
+      `3. **\`mcp__plugin_mem-vault_mem-vault__smart_outline\`** ← default before opening an unfamiliar source file. Returns the file's structural map (functions/classes/exports). Replaces a blind Read.\n` +
+      `4. **\`mcp__plugin_mem-vault_mem-vault__smart_unfold\`** ← drill into a specific symbol from an outline.\n` +
+      `5. **\`mcp__plugin_mem-vault_mem-vault__recall_for_query\`** ← bulk recall around a free-form query (decisions + recent context together).\n` +
+      `6. **\`mcp__plugin_mem-vault_mem-vault__timeline\`** ← "what changed recently" / "what did we do this week".\n\n` +
+      `Use Grep / Read / Glob ONLY when: (a) mem-vault tools returned empty or stale, OR (b) you need raw file content the smart tools didn't surface. Mention which mem-vault tool you tried first when falling back.\n\n` +
+      `The ${rows.length} items below are HIGH-SIGNAL prior decisions and recent activity:\n`;
     const body = rows.map(fmt).join('\n');
     const guidance = `
 
@@ -83,11 +92,15 @@ You have persistent project memory via the \`mem-vault\` MCP server. **Use it pr
 
 **Server name is \`mem-vault\` (with a hyphen) in BOTH Claude Code and Codex.** If you call \`ReadMcpResourceTool\` or \`ListMcpResourcesTool\`, pass \`server: "mem-vault"\` — never \`mem_vault\`. Resource URIs are \`mem-vault://recent\`, \`mem-vault://status\`, \`mem-vault://timeline\`.
 
-**Before answering any question about this codebase, its history, or past decisions, call these FIRST:**
-- \`mcp__plugin_mem-vault_mem-vault__search\` — full-text search past observations, decisions, bugfixes. Call this for ANY question like "what does X do?", "why did we...?", "have we changed...?", "what's the status of...?"
-- \`mcp__plugin_mem-vault_mem-vault__smart_search\` — find symbols (functions, classes, methods) by name across the project. Call this for ANY code lookup like "where is function X?", "show me the Y class", "find the handler for Z".
-- \`mcp__plugin_mem-vault_mem-vault__timeline\` — recent activity in reverse-chronological order. Call this for "what did we do recently?", "what changed today?".
-- \`mcp__plugin_mem-vault_mem-vault__smart_outline\` — structural outline of a file before reading it. Call this BEFORE Read on unfamiliar source files to get a map.
+**Default tool order is documented at the top of this context. Recap of WHEN to use each mem-vault tool:**
+- \`search\` — questions about prior work / history ("what does X do", "why did we", "have we changed", "status of")
+- \`smart_search\` — find a symbol (function/class/method) by name; replaces Grep for symbol lookups
+- \`smart_outline\` — file's structural map (functions/classes/exports); use BEFORE Read on unfamiliar files
+- \`smart_unfold\` — drill into a specific symbol from an outline
+- \`recall_for_query\` — bulk recall around a free-form query
+- \`timeline\` — recent activity / "what changed today"
+
+Grep/Read/Glob are FALLBACKS, used only when mem-vault returns insufficient results.
 
 **When you finish a logical task, call:**
 - \`mcp__plugin_mem-vault_mem-vault__save_observation\` — record the decision/fix/feature so future sessions (CC, CLI, Codex) remember it. Use type=\`decision\` for choices, \`bugfix\` for fixes, \`feature\` for new capability, \`discovery\` for insights.

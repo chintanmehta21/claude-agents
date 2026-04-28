@@ -336,6 +336,23 @@ function start({ open = true, port, host } = {}) {
     process.stdout.write(`  vault root: ${paths.vaultRoot()}\n`);
     process.stdout.write(`  projects:   ${paths.listProjects().length}\n`);
     if (open) tryOpenBrowser(urlStr);
+    // Schedule periodic consolidator over all registered projects.
+    try {
+      const consolidator = require('../server/consolidator');
+      const settings = loadSettings(process.env.MEM_VAULT_CWD || process.cwd());
+      const intervalMin = Number(settings.consolidator_interval_min);
+      if (intervalMin > 0) {
+        const run = () => {
+          try { consolidator.consolidateAll({}); } catch (e) {
+            try { process.stderr.write('[mem-vault] consolidator error: ' + (e.message || e) + '\n'); } catch {}
+          }
+        };
+        setTimeout(run, 60_000);
+        setInterval(run, intervalMin * 60_000).unref?.();
+      }
+    } catch (e) {
+      try { process.stderr.write('[mem-vault] consolidator schedule failed: ' + (e.message || e) + '\n'); } catch {}
+    }
   });
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {

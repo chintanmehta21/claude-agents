@@ -41,7 +41,29 @@ const path = require('path');
 
     const d = db.open(cwd);
     const sid = db.currentSession(d, 'claude-code') || db.startSession(d, { client: 'claude-code', cwd });
-    db.saveObservation(d, { ...obs, session_id: sid });
+    const obsId = db.saveObservation(d, { ...obs, session_id: sid });
+
+    // Auto-promote captures into higher-signal observations.
+    if (settings.auto_promote !== false) {
+      try {
+        const promote = require(path.join(pluginRoot, 'server', 'promote.js'));
+        const tool = payload.tool_name || payload.tool || '';
+        const minConf = Number(settings.auto_promote_min_confidence) || 0.6;
+        const enriched = { ...payload, session_id: sid };
+        let p = null;
+        if (tool === 'Bash') p = promote.promoteFromBash(enriched, { minConfidence: minConf });
+        else if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') {
+          p = promote.promoteFromEdit(enriched, { minConfidence: minConf });
+        }
+        if (p && p.type) {
+          const newTags = Array.from(new Set([...(obs.tags || []), ...(p.tags || [])]));
+          db.updateObservation(d, obsId, { type: p.type, body: p.body, tags: newTags });
+        }
+      } catch (e) {
+        // never block on promotion failure
+      }
+    }
+
     exit0();
   } catch (err) {
     console.error('[mem-vault] posttooluse hook error: ' + (err.message || err));

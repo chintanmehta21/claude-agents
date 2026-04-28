@@ -61,6 +61,35 @@ prefetch_max_results: 5
 # FTS5 score threshold; 0 = include every match.
 prefetch_min_score: 0
 
+# ---- Auto-promotion (PostToolUse hook) ----
+
+# When true, every captured Bash/Edit/Write observation is run through a
+# small classifier that may upgrade its `type` from `capture`/`change` to
+# `bugfix`, `feature`, `refactor`, or `discovery` based on surrounding
+# context (recent test failures, new file creation, multiple consecutive
+# edits to one file, stack-trace output, etc.). The original capture is
+# updated in place — no duplicates are created.
+auto_promote: true
+
+# Minimum classifier confidence (0..1) required to apply a promotion.
+auto_promote_min_confidence: 0.6
+
+# ---- Periodic consolidator (background daemon) ----
+
+# Every N minutes, the dashboard daemon scans the last
+# `consolidator_window_hours` of `capture`/`change` observations across ALL
+# registered projects and groups them into single high-signal summaries
+# (one `refactor` per file edited >3 times, one `discovery` per
+# capture+edit investigation sequence, etc.). Source observations are
+# kept and tagged `consolidated_into:<id>` so they remain searchable.
+# Set to 0 to disable.
+consolidator_interval_min: 30
+consolidator_window_hours: 24
+
+# When true, doctor includes the last 10 user prompts and the terms the
+# query extractor produced for each (debug aid).
+query_extract_debug: false
+
 # ---- Session end consolidation (SessionEnd hook) ----
 
 # Run lightweight dedupe on session end. Default false — closing the session

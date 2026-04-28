@@ -269,6 +269,20 @@ function recentContext(db, { limit = 15 }) {
   return rows.map(hydrate);
 }
 
+function updateObservation(db, id, patch) {
+  if (!id || !patch) return false;
+  const fields = [];
+  const args = [];
+  for (const k of ['type', 'title', 'body']) {
+    if (k in patch) { fields.push(`${k} = ?`); args.push(patch[k]); }
+  }
+  if ('files' in patch) { fields.push(`files = ?`); args.push(patch.files ? JSON.stringify(patch.files) : null); }
+  if ('tags' in patch) { fields.push(`tags = ?`); args.push(patch.tags ? JSON.stringify(patch.tags) : null); }
+  if (fields.length === 0) return false;
+  args.push(id);
+  return db.prepare(`UPDATE observations SET ${fields.join(', ')} WHERE id = ?`).run(...args).changes > 0;
+}
+
 function deleteObservation(db, id) {
   return db.prepare(`DELETE FROM observations WHERE id = ?`).run(id).changes > 0;
 }
@@ -356,6 +370,7 @@ module.exports = {
   currentSession,
   markChapter,
   saveObservation,
+  updateObservation,
   getObservation,
   getObservations,
   search,

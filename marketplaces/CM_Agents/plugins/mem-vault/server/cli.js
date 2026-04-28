@@ -29,6 +29,7 @@ const COMMANDS = {
   'setup-codex': setupCodex,
   dashboard: dashboard,
   prefetch: cliPrefetch,
+  consolidate: cliConsolidate,
   doctor: cliDoctor,
   help: help,
   '--help': help,
@@ -363,6 +364,23 @@ function cliPrefetch(args) {
   return (hint || '(no matches)') + '\n';
 }
 
+/** `consolidate` — manual consolidator run. */
+function cliConsolidate(args) {
+  const cwd = cwdFromArgs(args);
+  const consolidator = require('./consolidator');
+  const opts = { dryRun: !!args['dry-run'] || !!args.dryRun };
+  if (args.since) {
+    const m = String(args.since).match(/^(\d+)\s*([hHdD])?$/);
+    if (m) {
+      const n = Number(m[1]);
+      const unit = (m[2] || 'h').toLowerCase();
+      opts.windowHours = unit === 'd' ? n * 24 : n;
+    }
+  }
+  if (args.all) return consolidator.consolidateAll(opts);
+  return consolidator.consolidateProject(cwd, opts);
+}
+
 /** `doctor` — diagnostics for the user. */
 function cliDoctor(args) {
   const cwd = cwdFromArgs(args);
@@ -430,6 +448,24 @@ function cliDoctor(args) {
     hookChecks.every((h) => h.exists && h.node_check) &&
     !!vault && !vault.error;
 
+  let consolidatorLast = null;
+  try {
+    const consolidator = require('./consolidator');
+    consolidatorLast = consolidator.lastRunFor(cwd);
+  } catch {}
+
+  let promotionStats = null;
+  try {
+    const promote = require('./promote');
+    promotionStats = promote.getStatsSummary();
+  } catch {}
+
+  let queryExtractorStats = null;
+  try {
+    const prefetch = require('./prefetch');
+    queryExtractorStats = prefetch.getExtractDebug();
+  } catch {}
+
   return {
     ok,
     plugin_root: root,
@@ -442,6 +478,9 @@ function cliDoctor(args) {
     current_vault: vault,
     last_hook_fires: lastFires,
     hook_log_path: hookLog.logPath(),
+    consolidator_last_run: consolidatorLast,
+    auto_promote_stats: promotionStats,
+    query_extractor_stats: queryExtractorStats,
   };
 }
 
@@ -482,6 +521,7 @@ Admin:
 
 Diagnostics:
   prefetch --prompt "<text>" [--json]    Same logic as the UserPromptSubmit hook
+  consolidate [--since 24h] [--all] [--dry-run]   Group recent captures into summaries
   doctor                                 Verify hooks, dashboard, vault, registry
 `;
 }

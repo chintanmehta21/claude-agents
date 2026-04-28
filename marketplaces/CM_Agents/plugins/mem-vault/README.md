@@ -37,8 +37,30 @@
 
 ### Hooks
 - `SessionStart` → injects a compact recent-context index, creates a session row.
-- `PostToolUse` → auto-captures Edit/Write/Bash/Task invocations as observations.
+- `UserPromptSubmit` → entity-aware prefetch from the vault, injected as additionalContext.
+- `PreToolUse` → memory hint before Grep/Read/Glob/Bash.
+- `PostToolUse` → auto-captures Edit/Write/Bash invocations and auto-promotes them.
 - `SessionEnd` → closes session, runs lightweight dedupe.
+
+### How memory becomes useful
+
+The vault has three integrated layers that together turn a "noisy capture log"
+into "institutional memory the agent actually references." First, every
+`PostToolUse` capture runs through `server/promote.js`, which classifies the
+event in context (failing test → edit → passing test ⇒ `bugfix`; new file in
+`src/` with a function definition + tests run ⇒ `feature`; 3+ edits to one
+file in <10 minutes ⇒ `refactor`; stack-trace output ⇒ `discovery`) and
+upgrades the row in place. Second, `server/prefetch.js` extracts a focused
+entity-based query from each user prompt — pulling out CamelCase, snake_case,
+file paths, function calls and quoted phrases while dropping conversational
+filler ("hey", "still", "fix", "doesn't work") and honoring negation — so FTS
+returns precise hits instead of being swamped by stop-word matches. Third,
+the dashboard daemon runs `server/consolidator.js` every 30 minutes across
+ALL registered projects, grouping noisy captures from the last 24 hours into
+single high-signal `refactor` / `discovery` summaries (sources stay
+searchable, tagged `consolidated_into:<id>`). The net effect: every prompt
+gets a focused recall, every captured event gets the right type, and the
+vault stays small enough to be useful instead of growing unbounded.
 
 ### Skills (user-invoked slash commands)
 - `/mem-vault:mem-vault` — query / save / stats / purge
